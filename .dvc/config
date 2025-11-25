@@ -1,0 +1,3 @@
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/Noor-Ul-Baseer/Real-Time-Predictive-System.s3
