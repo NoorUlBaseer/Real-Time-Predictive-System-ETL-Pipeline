@@ -1,5 +1,6 @@
 outs:
-- md5: d41d8cd98f00b204e9800998ecf8427e
-  size: 0
+- md5: 646eb3165054c5753c0cea993a447edd
+  size: 6301
   hash: md5
   path: daily_news.csv
+  isexec: true
