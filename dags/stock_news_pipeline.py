@@ -127,7 +127,7 @@ def stock_news_pipeline(): # Main DAG function
             if os.path.exists(csv_path): # Check if file exists
                 df = pd.read_csv(csv_path) # Load historical data
                 print(f"Pulled history: {len(df)} rows") # Log number of rows pulled
-                return df.to_json(orient='split') # Return historical data as JSON string
+                return df.to_json(orient='split', date_format='iso') # Return historical data as JSON string
         except Exception as e: # Handle pull failures
             print(f"History pull failed (First run?): {e}")
         
@@ -198,7 +198,7 @@ def stock_news_pipeline(): # Main DAG function
             try: # Attempt to parse historical data
                 df_history = pd.read_json(history_json, orient='split') # Load historical data
                 
-                df_history['publishedAt'] = pd.to_datetime(df_history['publishedAt']) # Ensure datetime format
+                df_history['publishedAt'] = pd.to_datetime(df_history['publishedAt'], utc=True) # Ensure datetime format
                 
                 history_len = len(df_history) # Get length of historical data
                 print(f"Loaded history from XCom: {history_len} rows")
