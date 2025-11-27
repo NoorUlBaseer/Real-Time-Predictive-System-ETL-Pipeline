@@ -3,6 +3,7 @@ import json
 import requests
 import pandas as pd
 import pendulum
+import subprocess
 import mlflow
 from datetime import datetime, timedelta
 from textblob import TextBlob
@@ -108,6 +109,23 @@ def stock_news_pipeline(): # Main DAG function
         print(f"Extracted {len(validated_articles)} articles. Saved to {RAW_DATA_PATH}")
 
         return json.dumps(payload) # Return payload as JSON string for next task
+    
+    task_pull_history = BashOperator( # Task to pull DVC history
+        task_id='pull_dvc_history',
+        bash_command=(
+            "set -e; " # Fail Task if any command fails
+
+            "rm -rf /tmp/repo_pull && " # Clean up any existing temp repo
+            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo_pull && " # Clone GitHub repo
+            "cd /tmp/repo_pull && " # Change to repo directory
+            
+            f"dvc pull {PROCESSED_DATA_PATH} || echo 'Remote file not found, skipping pull'; " # Pull DVC tracked file, ignore if not found
+            
+            f"mkdir -p /usr/local/airflow/$(dirname {PROCESSED_DATA_PATH}) && " # Ensure target directory exists
+            f"cp {PROCESSED_DATA_PATH} /usr/local/airflow/{PROCESSED_DATA_PATH} || echo 'No history to copy'" # Copy pulled file to Airflow directory, ignore if not found
+        ),
+        env=DVC_ENV, # DVC Environment Variables
+    )
 
     @task
     def transform_and_profile(payload_json: str, **kwargs) -> str:
@@ -199,23 +217,18 @@ def stock_news_pipeline(): # Main DAG function
         print(f"Saved to {PROCESSED_DATA_PATH}")
 
         return PROCESSED_DATA_PATH # Return path to processed data for next task
-    
-    task_pull_history = BashOperator( # Task to pull DVC history
-        task_id='pull_dvc_history',
-        bash_command=(
-            f"dvc pull {PROCESSED_DATA_PATH} " # Pull historical data file from DVC remote  
-            "|| echo 'First run or file not found in remote, starting fresh.'"
-        ),
-        env=DVC_ENV, # DVC Environment Variables
-        cwd='.', # Working directory
-    )
 
     task_dvc = BashOperator( # Task to version and push processed data to DVC
         task_id='dvc_version_and_push',
         bash_command=(
             "set -euo pipefail; " # Fail task if any command fails
-            f"dvc add {PROCESSED_DATA_PATH} && " # Track processed data file with DVC
-            "dvc push" # Push changes to DVC remote
+
+            "dvc init --no-scm; " # Initialize DVC without SCM
+            "dvc remote add -d origin s3://dvc; " # Add DVC remote named 'origin'
+            f"dvc remote modify origin endpointurl https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3; " # Set custom endpoint URL
+            
+            f"dvc add {PROCESSED_DATA_PATH} && " # Track processed data with DVC
+            "dvc push" # Push data to DVC remote
         ),
         env=DVC_ENV, # DVC Environment Variables
         cwd='.', # Working directory
@@ -226,22 +239,20 @@ def stock_news_pipeline(): # Main DAG function
         bash_command=(
             "set -euo pipefail; " # Fail task if any command fails
             
-            "rm -rf /tmp/repo && "
-            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo && "
+            "rm -rf /tmp/repo_git && " # Clean up any existing temp repo
+            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo_git && " # Clone GitHub repo
 
-            f"mkdir -p /tmp/repo/$(dirname {PROCESSED_DATA_PATH}) && "
-            f"cp {PROCESSED_DATA_PATH}.dvc /tmp/repo/{PROCESSED_DATA_PATH}.dvc && "
+            f"mkdir -p /tmp/repo_git/$(dirname {PROCESSED_DATA_PATH}) && " # Ensure target directory exists
+            f"cp {PROCESSED_DATA_PATH}.dvc /tmp/repo_git/{PROCESSED_DATA_PATH}.dvc && " # Copy DVC file to temp repo
 
-            "cd /tmp/repo && "
+            "cd /tmp/repo_git && " # Change to repo directory
 
-            # Configure Git user for Airflow commits
-            "git config  user.email 'baseersoomro2013@gmail.com' && "
-            "git config  user.name 'Noor Ul Baseer (Airflow)' && "
+            "git config user.email 'baseersoomro2013@gmail.com' && " # Configure Git user email
+            "git config user.name 'Noor Ul Baseer (Airflow)' && " # Configure Git user name
 
-            f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC metafile
-            "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit with message including execution date
-
-            f"git push origin master" # Push to GitHub using authenticated URL
+            f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC file for commit
+            "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit changes with message
+            "git push origin master" # Push changes to GitHub
         ),
     )
 
