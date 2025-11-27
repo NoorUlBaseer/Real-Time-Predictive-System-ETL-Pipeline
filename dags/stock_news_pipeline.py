@@ -144,7 +144,7 @@ def stock_news_pipeline(): # Main DAG function
         
         df = pd.DataFrame(raw_data) # Load articles into DataFrame
 
-        df['publishedAt'] = pd.to_datetime(df['publishedAt']) # Convert to datetime
+        df['publishedAt'] = pd.to_datetime(df['publishedAt'], utc=True) # Convert to datetime
         df['hour_of_day'] = df['publishedAt'].dt.hour # Extract hour
         df['day_of_week'] = df['publishedAt'].dt.dayofweek # Extract day of week
         df['source_name'] = df['source'].apply(lambda x: x.get('name') if isinstance(x, dict) else None) # Extract source name
@@ -211,17 +211,24 @@ def stock_news_pipeline(): # Main DAG function
             print("No history found (fresh start)")
             df_combined = df # Use current data as combined data
 
-        df_combined = df_combined.drop_duplicates(subset=['title', 'publishedAt'], keep='last') # Remove duplicates based on title and publishedAt and keep latest
+        df_combined['dedupe_date'] = df_combined['publishedAt'].astype(str) # Temporary column for deduplication
+        
+        df_combined = df_combined.drop_duplicates(subset=['title', 'dedupe_date'], keep='last') # Deduplicate based on title and published date
+        
+        df_combined = df_combined.drop(columns=['dedupe_date']) # Remove temporary deduplication column
         
         if len(df_combined) <= history_len and history_len > 0: # No new unique data
             print("Duplication check complete: No new unique data found.")
             raise AirflowSkipException("Data is identical to history. Skipping write and push.") # Skip this task and downstream tasks
         
-        os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure processed data directory exists
-        df_combined.to_csv(PROCESSED_DATA_PATH, index=False) # Save combined data to CSV
-        print(f"Update detected! Total rows: {len(df_combined)} (+{len(df_combined) - history_len})")
+        os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure directory exists
+        
+        df_combined.to_csv(PROCESSED_DATA_PATH, index=False) # Save combined data to CSV file
+        
+        new_rows_count = len(df_combined) - history_len # Calculate number of new rows added
+        print(f"Update detected! Total rows: {len(df_combined)} (Added {new_rows_count} new rows)")
 
-        return df_combined.to_json(orient='split') # Return combined data as JSON string
+        return df_combined.to_json(orient='split', date_format='iso') # Return merged data as JSON string
 
     @task
     def task_dvc(merged_json: str) -> str:
