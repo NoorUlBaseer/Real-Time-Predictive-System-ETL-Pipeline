@@ -5,6 +5,7 @@ import pandas as pd
 import pendulum
 import subprocess
 import mlflow
+import shutil
 from datetime import datetime, timedelta
 from textblob import TextBlob
 from pathlib import Path
@@ -110,23 +111,27 @@ def stock_news_pipeline(): # Main DAG function
 
         return json.dumps(payload) # Return payload as JSON string for next task
     
-    task_pull_history = BashOperator( # Task to pull DVC history
-        task_id='pull_dvc_history',
-        bash_command=(
-            "set -e; " # Fail Task if any command fails
-
-            "rm -rf /tmp/repo_pull && " # Clean up any existing temp repo
-            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo_pull && " # Clone GitHub repo
-            "cd /tmp/repo_pull && " # Change to repo directory
+    @task
+    def task_pull_history() -> str:
+        tmp_dir = "/tmp/repo_pull" # Temporary directory for cloning repo
+        if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
+        
+        repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git" # GitHub repo URL
+        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True) # Clone repo
+        
+        try: # Attempt to pull historical data using DVC
+            subprocess.run(["dvc", "pull", PROCESSED_DATA_PATH], cwd=tmp_dir, env=DVC_ENV, check=True) # DVC pull command
+            csv_path = os.path.join(tmp_dir, PROCESSED_DATA_PATH) # Path to pulled CSV file
             
-            f"dvc pull {PROCESSED_DATA_PATH} || echo 'Remote file not found, skipping pull'; " # Pull DVC tracked file, ignore if not found
-            
-            f"mkdir -p /usr/local/airflow/$(dirname {PROCESSED_DATA_PATH}) && " # Ensure target directory exists
-            f"cp {PROCESSED_DATA_PATH} /usr/local/airflow/{PROCESSED_DATA_PATH} || echo 'No history to copy'" # Copy pulled file to Airflow directory, ignore if not found
-        ),
-        env=DVC_ENV, # DVC Environment Variables
-    )
-
+            if os.path.exists(csv_path): # Check if file exists
+                df = pd.read_csv(csv_path) # Load historical data
+                print(f"Pulled history: {len(df)} rows") # Log number of rows pulled
+                return df.to_json(orient='split') # Return historical data as JSON string
+        except Exception as e: # Handle pull failures
+            print(f"History pull failed (First run?): {e}")
+        
+        return "{}" # Return empty JSON if no history
+    
     @task
     def transform_and_profile(payload_json: str, **kwargs) -> str:
         payload = json.loads(payload_json) # Parse JSON string back to dict
@@ -186,79 +191,93 @@ def stock_news_pipeline(): # Main DAG function
             mlflow.log_metric("unique_sources", unique_sources) # Log unique sources count
             
             print("Logged artifacts and metrics to MLflow.")
-
-        os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure processed data directory exists
         
-        history_len = 0 # Initialize history length
-        if os.path.exists(PROCESSED_DATA_PATH) and os.path.getsize(PROCESSED_DATA_PATH) > 0: # Check if history file exists and is non-empty
-            try:
-                df_history = pd.read_csv(PROCESSED_DATA_PATH) # Load historical data
-                df_history['publishedAt'] = pd.to_datetime(df_history['publishedAt']) # Convert to datetime
+        history_len = 0        
+        if history_json and history_json != "{}": # If historical data exists
+            try: # Attempt to parse historical data
+                df_history = pd.read_json(history_json, orient='split') # Load historical data
+                
+                df_history['publishedAt'] = pd.to_datetime(df_history['publishedAt']) # Ensure datetime format
                 
                 history_len = len(df_history) # Get length of historical data
-                print(f"Loaded history: {history_len} rows") # Log history length
+                print(f"Loaded history from XCom: {history_len} rows")
                 
                 df_combined = pd.concat([df_history, df]) # Combine historical and new data
-            except pd.errors.EmptyDataError: # Handle empty/corrupt file
-                print("History file exists but is corrupt/empty. Starting fresh.")
-                df_combined = df # Use only new data
-        else: # No history file found
+            except ValueError as e: # Handle JSON parsing errors
+                print(f"Error parsing history JSON: {e}. Starting fresh.")
+                df_combined = df # Start fresh if error occurs
+        else: # No historical data
             print("No history found (fresh start)")
-            df_combined = df # Use only new data
+            df_combined = df # Use current data as combined data
 
-        df_combined = df_combined.drop_duplicates(subset=['title', 'publishedAt'], keep='last') # Remove duplicates based on title and publishedAt and keep last occurrence
+        df_combined = df_combined.drop_duplicates(subset=['title', 'publishedAt'], keep='last') # Remove duplicates based on title and publishedAt and keep latest
         
         if len(df_combined) <= history_len and history_len > 0: # No new unique data
             print("Duplication check complete: No new unique data found.")
-            raise AirflowSkipException("Data is identical to history. Skipping write and push.") # Skip this and downstream tasks
+            raise AirflowSkipException("Data is identical to history. Skipping write and push.") # Skip this task and downstream tasks
         
+        os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure processed data directory exists
         df_combined.to_csv(PROCESSED_DATA_PATH, index=False) # Save combined data to CSV
         print(f"Update detected! Total rows: {len(df_combined)} (+{len(df_combined) - history_len})")
-        print(f"Saved to {PROCESSED_DATA_PATH}")
 
-        return PROCESSED_DATA_PATH # Return path to processed data for next task
+        return df_combined.to_json(orient='split') # Return combined data as JSON string
 
-    task_dvc = BashOperator( # Task to version and push processed data to DVC
-        task_id='dvc_version_and_push',
-        bash_command=(
-            "set -euo pipefail; " # Fail task if any command fails
+    @task
+    def task_dvc(merged_json: str) -> str:        
+        df = pd.read_json(merged_json, orient='split') # Load merged data from JSON string
+        os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure directory exists
+        df.to_csv(PROCESSED_DATA_PATH, index=False) # Save merged data to CSV
+        
+        subprocess.run(["dvc", "init", "--no-scm"], check=True) # Initialize DVC without SCM
+        subprocess.run(["dvc", "remote", "add", "-d", "origin", "s3://dvc"], check=True) # Add DVC remote storage
+        subprocess.run(["dvc", "remote", "modify", "origin", "endpointurl", f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3"], check=True) # Modify DVC remote endpoint URL
+        
+        subprocess.run(["dvc", "add", PROCESSED_DATA_PATH], check=True, env=DVC_ENV) # DVC add command
+        subprocess.run(["dvc", "push"], check=True, env=DVC_ENV) # DVC push command
+        
+        dvc_path = f"{PROCESSED_DATA_PATH}.dvc" # Path to DVC file
 
-            "dvc init --no-scm; " # Initialize DVC without SCM
-            "dvc remote add -d origin s3://dvc; " # Add DVC remote named 'origin'
-            f"dvc remote modify origin endpointurl https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3; " # Set custom endpoint URL
+        with open(dvc_path, 'r') as f: # Read DVC file content
+            dvc_content = f.read() # Store DVC file content
             
-            f"dvc add {PROCESSED_DATA_PATH} && " # Track processed data with DVC
-            "dvc push" # Push data to DVC remote
-        ),
-        env=DVC_ENV, # DVC Environment Variables
-        cwd='.', # Working directory
-    )
+        return dvc_content # Return DVC file content for next task
 
-    task_git_commit = BashOperator( # Task to commit DVC changes to Git
-        task_id='git_commit_and_push',
-        bash_command=(
-            "set -euo pipefail; " # Fail task if any command fails
+    @task
+    def task_git_commit(dvc_content: str, **kwargs):        
+        tmp_dir = "/tmp/repo_git" # Temporary directory for Git operations
+        if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
+        
+        repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git" # GitHub repo URL
+        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True) # Clone repo
+        
+        dvc_file_path = os.path.join(tmp_dir, f"{PROCESSED_DATA_PATH}.dvc") # Path to DVC file in cloned repo
+        os.makedirs(os.path.dirname(dvc_file_path), exist_ok=True) # Ensure directory exists
+        
+        with open(dvc_file_path, 'w') as f: # Write DVC content to file
+            f.write(dvc_content) # Write DVC file content
             
-            "rm -rf /tmp/repo_git && " # Clean up any existing temp repo
-            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo_git && " # Clone GitHub repo
-
-            f"mkdir -p /tmp/repo_git/$(dirname {PROCESSED_DATA_PATH}) && " # Ensure target directory exists
-            f"cp {PROCESSED_DATA_PATH}.dvc /tmp/repo_git/{PROCESSED_DATA_PATH}.dvc && " # Copy DVC file to temp repo
-
-            "cd /tmp/repo_git && " # Change to repo directory
-
-            "git config user.email 'baseersoomro2013@gmail.com' && " # Configure Git user email
-            "git config user.name 'Noor Ul Baseer (Airflow)' && " # Configure Git user name
-
-            f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC file for commit
-            "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit changes with message
-            "git push origin master" # Push changes to GitHub
-        ),
-    )
-
-    raw_payload = extract_live_data() # Extract raw data task
+        cwd = tmp_dir # Set current working directory for Git commands
+        
+        # Configure Git user details
+        subprocess.run(["git", "config", "user.email", "baseersoomro2013@gmail.com"], cwd=cwd, check=True)
+        subprocess.run(["git", "config", "user.name", "Noor Ul Baseer (Airflow)"], cwd=cwd, check=True)
+        
+        subprocess.run(["git", "add", "."], cwd=cwd, check=True) # Stage all changes
+        
+        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False) # Commit changes with message
+        
+        subprocess.run(["git", "push", "origin", "main"], cwd=cwd, check=True) # Push changes to remote repository
+        
+        print("Git push successful.")
     
-    # Define task dependencies
-    raw_payload >> task_pull_history >> transform_and_profile(raw_payload) >> task_dvc >> task_git_commit
+    raw_payload = extract_live_data() # Extract live data from GNews API
+    
+    history_json = task_pull_history() # Pull historical data from DVC
+    
+    merged_json = transform_and_profile(raw_payload, history_json) # Transform and profile data
+    
+    dvc_content = task_dvc(merged_json) # Version data with DVC
+    
+    task_git_commit(dvc_content) # Commit and push changes to GitHub
 
 stock_news_pipeline() # Instantiate the DAG
