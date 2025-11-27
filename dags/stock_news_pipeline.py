@@ -120,7 +120,7 @@ def stock_news_pipeline(): # Main DAG function
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git" # GitHub repo URL
         subprocess.run(["git", "clone", repo_url, tmp_dir], check=True) # Clone repo
         
-        subprocess.run(["dvc", "remote", "add", "-d", "origin", "s3://dvc"], cwd=tmp_dir, check=True) # Add DVC remote storage
+        subprocess.run(["dvc", "remote", "add", "-d", "-f", "origin", "s3://dvc"], cwd=tmp_dir, check=True) # Add DVC remote storage
         subprocess.run(["dvc", "remote", "modify", "origin", "endpointurl", f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3"], cwd=tmp_dir, check=True) # Modify DVC remote endpoint
         
         try: # Attempt to pull historical data
