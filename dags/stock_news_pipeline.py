@@ -113,25 +113,28 @@ def stock_news_pipeline(): # Main DAG function
         return json.dumps(payload) # Return payload as JSON string for next task
     
     @task
-    def task_pull_history() -> str:
+    def task_pull_history() -> str:        
         tmp_dir = "/tmp/repo_pull" # Temporary directory for cloning repo
         if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
         
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git" # GitHub repo URL
         subprocess.run(["git", "clone", repo_url, tmp_dir], check=True) # Clone repo
         
-        try: # Attempt to pull historical data using DVC
-            subprocess.run(["dvc", "pull", PROCESSED_DATA_PATH], cwd=tmp_dir, env=DVC_ENV, check=True) # DVC pull command
+        subprocess.run(["dvc", "remote", "add", "-d", "origin", "s3://dvc"], cwd=tmp_dir, check=True) # Add DVC remote storage
+        subprocess.run(["dvc", "remote", "modify", "origin", "endpointurl", f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3"], cwd=tmp_dir, check=True) # Modify DVC remote endpoint
+        
+        try: # Attempt to pull historical data
+            subprocess.run(["dvc", "pull", PROCESSED_DATA_PATH], cwd=tmp_dir, env=DVC_ENV, check=True) # Pull processed data file
             csv_path = os.path.join(tmp_dir, PROCESSED_DATA_PATH) # Path to pulled CSV file
             
             if os.path.exists(csv_path): # Check if file exists
-                df = pd.read_csv(csv_path) # Load historical data
+                df = pd.read_csv(csv_path) # Load historical data into DataFrame
                 print(f"Pulled history: {len(df)} rows") # Log number of rows pulled
                 return df.to_json(orient='split', date_format='iso') # Return historical data as JSON string
-        except Exception as e: # Handle pull failures
+        except Exception as e: # Handle pull errors
             print(f"History pull failed (First run?): {e}")
         
-        return "{}" # Return empty JSON if no history
+        return "{}" # Return empty JSON if no history found
     
     @task
     def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
