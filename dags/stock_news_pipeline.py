@@ -139,7 +139,7 @@ def stock_news_pipeline(): # Main DAG function
     @task
     def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
         #print history_json
-        print(history_json)
+        print(f"History: {history_json[:100]}...")  # Print first 100 characters of history JSON for debugging
 
         payload = json.loads(payload_json) # Parse JSON string back to dict
         raw_data = payload.get("articles") # Extract articles
