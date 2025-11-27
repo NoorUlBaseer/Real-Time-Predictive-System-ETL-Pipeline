@@ -120,30 +120,27 @@ def stock_news_pipeline(): # Main DAG function
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git" # GitHub repo URL
         subprocess.run(["git", "clone", repo_url, tmp_dir], check=True) # Clone repo
         
-        print("Configuring DVC Remote...")
-        subprocess.run(["dvc", "remote", "add", "-d", "-f", "origin", "s3://dvc"], cwd=tmp_dir, check=True) # Add DVC remote
-        subprocess.run(["dvc", "remote", "modify", "origin", "endpointurl", f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3"], cwd=tmp_dir, check=True) # Modify DVC remote endpoint
+        commands = (
+            "dvc remote add -d -f origin s3://dvc && " # Add DVC remote storage
+            f"dvc remote modify origin endpointurl https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3 && " # Set endpoint URL
+            f"dvc pull {PROCESSED_DATA_PATH}" # Pull processed data file
+        )
         
-        try: # Attempt to pull historical data from DVC
-            print("Attempting DVC Pull...")
-            subprocess.run(["dvc", "pull", PROCESSED_DATA_PATH], cwd=tmp_dir, env=DVC_ENV, check=True) # DVC pull command
+        try:
+            subprocess.run(commands, cwd=tmp_dir, env=DVC_ENV, check=True, shell=True, executable="/bin/bash") # Run DVC commands
             
             csv_path = os.path.join(tmp_dir, PROCESSED_DATA_PATH) # Path to pulled CSV file
             
-            if os.path.exists(csv_path): # Check if CSV file exists
-                df = pd.read_csv(csv_path) # Load historical data into DataFrame
-                print(f"✅ Success! Pulled history: {len(df)} rows")
-                return df.to_json(orient='split', date_format='iso') # Return historical data as JSON string
-            else: # CSV file not found
-                print("⚠️ DVC Pull succeeded but CSV file is missing?")
-                return "{}"
-                
-        except subprocess.CalledProcessError: # Handle DVC pull errors
-            print("⚠️ DVC Pull failed. This is expected ONLY if this is the very first run.")
-            return "{}"
-        except Exception as e: # Handle unexpected errors
-            print(f"❌ Unexpected Error: {e}")
-            raise AirflowFailException(f"Critical Failure in Pull History: {e}")
+            if os.path.exists(csv_path): # Check if file exists
+                df = pd.read_csv(csv_path) # Load CSV into DataFrame
+                print(f"Pulled history: {len(df)} rows") # Log number of rows pulled
+                return df.to_json(orient='split', date_format='iso')  # Return DataFrame as JSON string
+        except subprocess.CalledProcessError as e: # Handle DVC pull errors
+            print(f"DVC Pull failed (Likely first run or file missing): {e}")
+        except Exception as e: # Handle other errors
+            print(f"Unexpected error in pull history: {e}")
+        
+        return "{}" # Return empty JSON if no history
     
     @task
     def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
