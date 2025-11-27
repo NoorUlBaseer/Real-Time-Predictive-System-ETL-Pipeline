@@ -271,7 +271,7 @@ def stock_news_pipeline(): # Main DAG function
         
         subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False) # Commit changes with message
         
-        subprocess.run(["git", "push", "origin", "main"], cwd=cwd, check=True) # Push changes to remote repository
+        subprocess.run(["git", "push", "origin", "master"], cwd=cwd, check=True) # Push changes to remote repository
         
         print("Git push successful.")
     
