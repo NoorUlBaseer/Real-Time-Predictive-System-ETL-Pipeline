@@ -225,18 +225,24 @@ def stock_news_pipeline(): # Main DAG function
         task_id='git_commit_and_push',
         bash_command=(
             "set -euo pipefail; " # Fail task if any command fails
-            "git config --global --add safe.directory /usr/local/airflow && " # Mark directory as safe for Git
+            
+            "rm -rf /tmp/repo && "
+            f"git clone https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git /tmp/repo && "
+
+            f"mkdir -p /tmp/repo/$(dirname {PROCESSED_DATA_PATH}) && "
+            f"cp {PROCESSED_DATA_PATH}.dvc /tmp/repo/{PROCESSED_DATA_PATH}.dvc && "
+
+            "cd /tmp/repo && "
 
             # Configure Git user for Airflow commits
-            "git config --global user.email 'baseersoomro2013@gmail.com' && "
-            "git config --global user.name 'Noor Ul Baseer (Airflow)' && "
+            "git config  user.email 'baseersoomro2013@gmail.com' && "
+            "git config  user.name 'Noor Ul Baseer (Airflow)' && "
 
             f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC metafile
             "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit with message including execution date
 
-            f"git push https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git HEAD:master" # Push to GitHub using authenticated URL
+            f"git push origin master" # Push to GitHub using authenticated URL
         ),
-        cwd='.', # Working directory
     )
 
     raw_payload = extract_live_data() # Extract raw data task
