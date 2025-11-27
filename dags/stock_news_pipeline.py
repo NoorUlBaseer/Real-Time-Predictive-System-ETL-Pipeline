@@ -19,13 +19,23 @@ PROCESSED_DATA_PATH = "data/processed/daily_news.csv" # Cleaned + Merged CSV
 REPORT_PATH = "data/reports/daily_quality_report.html" # Profiling Report
 
 # Load Secrets from Airflow Variables
+# GNews API Key
 GNEWS_API_KEY = Variable.get("gnews_api_key")
+
+# Dagshub Access Credentials for DVC
 DAGSHUB_ACCESS = Variable.get("dagshub_access_key")
 DAGSHUB_SECRET = Variable.get("dagshub_secret_key")
+
+# Dagshub User Credentials for MLflow
 DAGSHUB_USER = Variable.get("dagshub_username")
 DAGSHUB_TOKEN = Variable.get("dagshub_token")
+REPO_NAME = "Real-Time-Predictive-System" # Dagshub Repository Name for MLflow tracking
 
-REPO_NAME = "Real-Time-Predictive-System" # Dagshub Repo Name
+# GitHub Credentials for pushing commits
+GITHUB_TOKEN = Variable.get("github_token")
+GITHUB_USER = Variable.get("github_username")
+
+GITHUB_REPO = "Real-Time-Predictive-System-ETL-Pipeline" # GitHub Repository Name for pushing commits
 
 DVC_ENV = { # DVC Environment Variables for BashOperator
     "AWS_ACCESS_KEY_ID": DAGSHUB_ACCESS,
@@ -47,12 +57,12 @@ def stock_news_pipeline(): # Main DAG function
         execution_date = kwargs.get('ds') # Get execution date in 'YYYY-MM-DD' format
 
         target_date = datetime.strptime(execution_date, '%Y-%m-%d') - timedelta(days=1) # Fetch previous day's date
-        str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
-        end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
+        #str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
+        #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        #str_date = "2025-11-24T00:00:00Z"
-        #end_date = "2025-11-24T23:59:59Z"
+        str_date = "2025-11-16T00:00:00Z"
+        end_date = "2025-11-16T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -212,7 +222,7 @@ def stock_news_pipeline(): # Main DAG function
     )
 
     task_git_commit = BashOperator( # Task to commit DVC changes to Git
-        task_id='git_commit_metadata',
+        task_id='git_commit_and_push',
         bash_command=(
             "set -euo pipefail; " # Fail task if any command fails
             "git config --global --add safe.directory /usr/local/airflow && " # Mark directory as safe for Git
@@ -222,7 +232,9 @@ def stock_news_pipeline(): # Main DAG function
             "git config --global user.name 'Noor Ul Baseer (Airflow)' && "
 
             f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC metafile
-            "git commit -m 'ETL Update: Processed data for {{ ds }}'" # Commit with message including execution date
+            "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit with message including execution date
+
+            f"git push https://{GITHUB_USER}:{GITHUB_TOKEN}@{GITHUB_REPO} HEAD:master" # Push to GitHub using authenticated URL
         ),
         cwd='.', # Working directory
     )
