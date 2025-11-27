@@ -113,7 +113,7 @@ def stock_news_pipeline(): # Main DAG function
         return json.dumps(payload) # Return payload as JSON string for next task
     
     @task
-    def task_pull_history() -> str:        
+    def pull_dvc_history() -> str:        
         tmp_dir = "/tmp/repo_pull" # Temporary directory for cloning repo
         if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
         
@@ -243,7 +243,7 @@ def stock_news_pipeline(): # Main DAG function
         return df_combined.to_json(orient='split', date_format='iso') # Return merged data as JSON string
 
     @task
-    def task_dvc(merged_json: str) -> str:
+    def dvc_add_and_push(merged_json: str) -> str:
         df = pd.read_json(StringIO(merged_json), orient='split') # Load merged data from JSON string 
         
         os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure directory exists
@@ -267,7 +267,7 @@ def stock_news_pipeline(): # Main DAG function
         return dvc_content # Return DVC file content for Git commit
 
     @task
-    def task_git_commit(dvc_content: str, **kwargs):        
+    def git_commit_and_push(dvc_content: str, **kwargs):
         tmp_dir = "/tmp/repo_git" # Temporary directory for Git operations
         if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
         
@@ -296,12 +296,12 @@ def stock_news_pipeline(): # Main DAG function
     
     raw_payload = extract_live_data() # Extract live data from GNews API
     
-    history_json = task_pull_history() # Pull historical data from DVC
+    history_json = pull_dvc_history() # Pull historical data from DVC
     
     merged_json = transform_and_profile(raw_payload, history_json) # Transform and profile data
     
-    dvc_content = task_dvc(merged_json) # Version data with DVC
+    dvc_content = dvc_add_and_push(merged_json) # Version data with DVC
     
-    task_git_commit(dvc_content) # Commit and push changes to GitHub
+    git_commit_and_push(dvc_content) # Commit and push changes to GitHub
 
 stock_news_pipeline() # Instantiate the DAG
