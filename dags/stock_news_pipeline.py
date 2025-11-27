@@ -57,12 +57,12 @@ def stock_news_pipeline(): # Main DAG function
         execution_date = kwargs.get('ds') # Get execution date in 'YYYY-MM-DD' format
 
         target_date = datetime.strptime(execution_date, '%Y-%m-%d') - timedelta(days=1) # Fetch previous day's date
-        #str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
-        #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
+        str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
+        end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        str_date = "2025-11-16T00:00:00Z"
-        end_date = "2025-11-16T23:59:59Z"
+        #str_date = "2025-11-12T00:00:00Z"
+        #end_date = "2025-11-12T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -234,7 +234,7 @@ def stock_news_pipeline(): # Main DAG function
             f"git add {PROCESSED_DATA_PATH}.dvc && " # Stage DVC metafile
             "git commit -m 'ETL Update: Processed data for {{ ds }}'; " # Commit with message including execution date
 
-            f"git push https://{GITHUB_USER}:{GITHUB_TOKEN}@{GITHUB_REPO} HEAD:master" # Push to GitHub using authenticated URL
+            f"git push https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git HEAD:master" # Push to GitHub using authenticated URL
         ),
         cwd='.', # Working directory
     )
