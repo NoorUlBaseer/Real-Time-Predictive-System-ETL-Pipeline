@@ -14,6 +14,7 @@ from airflow.decorators import dag, task
 from airflow.operators.bash import BashOperator
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from ydata_profiling import ProfileReport
+from io import StringIO
 
 DAG_ID = "stock_news_pipeline"
 RAW_DATA_PATH = "data/raw/daily_news.json" # Raw JSON data from API
@@ -223,24 +224,28 @@ def stock_news_pipeline(): # Main DAG function
         return df_combined.to_json(orient='split') # Return combined data as JSON string
 
     @task
-    def task_dvc(merged_json: str) -> str:        
-        df = pd.read_json(merged_json, orient='split') # Load merged data from JSON string
+    def task_dvc(merged_json: str) -> str:
+        df = pd.read_json(StringIO(merged_json), orient='split') # Load merged data from JSON string 
+        
         os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure directory exists
-        df.to_csv(PROCESSED_DATA_PATH, index=False) # Save merged data to CSV
+        df.to_csv(PROCESSED_DATA_PATH, index=False) # Save merged data to CSV file
         
-        subprocess.run(["dvc", "init", "--no-scm"], check=True) # Initialize DVC without SCM
-        subprocess.run(["dvc", "remote", "add", "-d", "origin", "s3://dvc"], check=True) # Add DVC remote storage
-        subprocess.run(["dvc", "remote", "modify", "origin", "endpointurl", f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3"], check=True) # Modify DVC remote endpoint URL
+        commands = (
+            "dvc init --no-scm && " # Initialize DVC without Git
+            "dvc remote add -d origin s3://dvc && " # Add DVC remote storage
+            f"dvc remote modify origin endpointurl https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3 && " # Set endpoint URL
+            f"dvc add {PROCESSED_DATA_PATH} && " # Add processed data to DVC tracking
+            "dvc push" # Push data to DVC remote storage
+        )
         
-        subprocess.run(["dvc", "add", PROCESSED_DATA_PATH], check=True, env=DVC_ENV) # DVC add command
-        subprocess.run(["dvc", "push"], check=True, env=DVC_ENV) # DVC push command
+        subprocess.run(commands, shell=True, check=True, env=DVC_ENV, executable="/bin/bash") # Run DVC commands
         
         dvc_path = f"{PROCESSED_DATA_PATH}.dvc" # Path to DVC file
 
         with open(dvc_path, 'r') as f: # Read DVC file content
             dvc_content = f.read() # Store DVC file content
             
-        return dvc_content # Return DVC file content for next task
+        return dvc_content # Return DVC file content for Git commit
 
     @task
     def task_git_commit(dvc_content: str, **kwargs):        
@@ -258,7 +263,7 @@ def stock_news_pipeline(): # Main DAG function
             
         cwd = tmp_dir # Set current working directory for Git commands
         
-        # Configure Git user details
+        # Configure Git user detail
         subprocess.run(["git", "config", "user.email", "baseersoomro2013@gmail.com"], cwd=cwd, check=True)
         subprocess.run(["git", "config", "user.name", "Noor Ul Baseer (Airflow)"], cwd=cwd, check=True)
         
