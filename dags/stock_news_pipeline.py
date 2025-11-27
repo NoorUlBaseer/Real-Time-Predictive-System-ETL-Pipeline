@@ -133,7 +133,7 @@ def stock_news_pipeline(): # Main DAG function
         return "{}" # Return empty JSON if no history
     
     @task
-    def transform_and_profile(payload_json: str, **kwargs) -> str:
+    def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
         payload = json.loads(payload_json) # Parse JSON string back to dict
         raw_data = payload.get("articles") # Extract articles
         
