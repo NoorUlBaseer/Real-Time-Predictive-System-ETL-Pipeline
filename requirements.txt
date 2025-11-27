@@ -1,0 +1,7 @@
+apache-airflow-providers-http
+dvc[s3]
+requests
+pandas
+ydata-profiling
+mlflow
+textblob
