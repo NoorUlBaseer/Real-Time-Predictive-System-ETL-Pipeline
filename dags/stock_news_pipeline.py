@@ -22,6 +22,7 @@ import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from mlflow.tracking import MlflowClient
 
 DAG_ID = "stock_news_pipeline"
 RAW_DATA_PATH = "data/raw/daily_news.json" # Raw JSON data from API
@@ -71,8 +72,8 @@ def stock_news_pipeline(): # Main DAG function
         #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        str_date = "2025-11-16T00:00:00Z"
-        end_date = "2025-11-16T23:59:59Z"
+        str_date = "2025-11-17T00:00:00Z"
+        end_date = "2025-11-17T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -306,8 +307,7 @@ def stock_news_pipeline(): # Main DAG function
         if not os.path.exists(PROCESSED_DATA_PATH): # Check if processed data exists
             raise AirflowSkipException("No processed data found to train on.")
         
-        # print the first 500 characters of the CSV for debugging
-        with open(PROCESSED_DATA_PATH, 'r') as f:
+        with open(PROCESSED_DATA_PATH, 'r') as f: # Print the first 500 characters of the CSV for debugging
             print(f"Processed Data Preview:\n{f.read(500)}")
             
         df = pd.read_csv(PROCESSED_DATA_PATH) # Load processed data
@@ -333,7 +333,7 @@ def stock_news_pipeline(): # Main DAG function
         mlflow.set_experiment("Stock_Price_Prediction") # Set MLflow experiment
 
         # Train RandomForestRegressor model
-        with mlflow.start_run(run_name=f"Train_{kwargs.get('ds')}"):  # Start MLflow run
+        with mlflow.start_run(run_name=f"Train_{kwargs.get('ds')}") as run: # Start MLflow run
             # Hyperparameters
             n_estimators = 100 # Number of trees in the forest
             max_depth = 10 # Maximum depth of the tree
@@ -360,14 +360,23 @@ def stock_news_pipeline(): # Main DAG function
             
             # Save and log the trained model using joblib
             model_filename = "stock_sentiment_model.pkl" # Model filename 
-            
             joblib.dump(model, model_filename) # Save model to file
-            
-            mlflow.log_artifact(model_filename) # Log model file as MLflow artifact
-            
+            mlflow.log_artifact(model_filename, artifact_path="model") # Log model file as MLflow artifact
             print(f"Model logged successfully as {model_filename}")
             
-            return "Model Trained and Logged"
+            # Register the model in MLflow Model Registry
+            try: # Attempt model registration
+                model_uri = f"runs:/{run.info.run_id}/model/{model_filename}" # Model URI in MLflow artifact store
+                
+                registered_model_name = "Stock_Sentiment_Predictor" # Registered model name
+                
+                result = mlflow.register_model(model_uri, registered_model_name) # Register model
+                print(f"✅ Model Registered! Name: {result.name}, Version: {result.version}")
+                
+            except Exception as e: # Handle registration errors
+                print(f"⚠️ Model Registration Warning: {e}")
+            
+            return "Model Trained and Registered"
     
     raw_payload = extract_live_data() # Extract live data from GNews API
     history_json = pull_dvc_history() # Pull historical data from DVC
