@@ -71,8 +71,8 @@ def stock_news_pipeline(): # Main DAG function
         #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        str_date = "2025-11-15T00:00:00Z"
-        end_date = "2025-11-15T23:59:59Z"
+        str_date = "2025-11-16T00:00:00Z"
+        end_date = "2025-11-16T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -305,6 +305,10 @@ def stock_news_pipeline(): # Main DAG function
     def train_model(dvc_content: str, **kwargs): # Train and log model with MLflow
         if not os.path.exists(PROCESSED_DATA_PATH): # Check if processed data exists
             raise AirflowSkipException("No processed data found to train on.")
+        
+        # print the first 500 characters of the CSV for debugging
+        with open(PROCESSED_DATA_PATH, 'r') as f:
+            print(f"Processed Data Preview:\n{f.read(500)}")
             
         df = pd.read_csv(PROCESSED_DATA_PATH) # Load processed data
         
