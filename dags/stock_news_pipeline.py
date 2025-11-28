@@ -354,20 +354,11 @@ def stock_news_pipeline(): # Main DAG function
             
             print(f"Training Complete. RMSE: {rmse}")
             
-            logged_model_info = mlflow.sklearn.log_model( # Log the trained model to MLflow
-                sk_model=model, 
-                artifact_path="model"
-            )
+            mlflow.sklearn.log_model(model, "model")
             
-            # Register the model in MLflow Model Registry
-            try: # Attempt to register the model
-                model_uri = logged_model_info.model_uri # Get model URI
-                registered_model = mlflow.register_model(model_uri, "Stock_Sentiment_Predictor") # Register model
-                print(f"Model Registered: Name={registered_model.name}, Version={registered_model.version}")
-            except Exception as e: # Handle registration errors
-                print(f"Model Registration Warning: {e}")
+            print("Model logged successfully (Artifact only).")
             
-            return "Model Trained, Logged, and Registered"
+            return "Model Trained and Logged"
     
     raw_payload = extract_live_data() # Extract live data from GNews API
     history_json = pull_dvc_history() # Pull historical data from DVC
