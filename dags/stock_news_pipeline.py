@@ -67,12 +67,12 @@ def stock_news_pipeline(): # Main DAG function
         execution_date = kwargs.get('ds') # Get execution date in 'YYYY-MM-DD' format
 
         target_date = datetime.strptime(execution_date, '%Y-%m-%d') - timedelta(days=1) # Fetch previous day's date
-        str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
-        end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
+        #str_date = target_date.strftime('%Y-%m-%dT00:00:00Z') # Start of day
+        #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        #str_date = "2025-11-20T00:00:00Z"
-        #end_date = "2025-11-20T23:59:59Z"
+        str_date = "2025-11-15T00:00:00Z"
+        end_date = "2025-11-15T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -315,9 +315,8 @@ def stock_news_pipeline(): # Main DAG function
         features = ['hour_of_day', 'day_of_week', 'title_sentiment', 'desc_sentiment', 'content_sentiment'] # Feature columns for training
         X = df[features] # Feature matrix for training
         
-        # Generate synthetic target variable (e.g., stock market change) for demonstration
-        np.random.seed(42) # For reproducibility
-        df['market_change'] = (df['title_sentiment'] + df['content_sentiment']) * 10 + np.random.normal(0, 2, len(df)) # Synthetic target variable
+        # Create synthetic target variable for demonstration purposes
+        df['market_change'] = (df['title_sentiment'] + df['content_sentiment']) * 10 # Synthetic target variable
         y = df['market_change'] # Target variable
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42) # Train-test split
