@@ -354,11 +354,16 @@ def stock_news_pipeline(): # Main DAG function
             
             print(f"Training Complete. RMSE: {rmse}")
             
-            mlflow.sklearn.log_model( # Log and register the model with MLflow
-                sk_model=model,
-                artifact_path="model",
-                registered_model_name="Stock_Sentiment_Predictor"
+            logged_model_info = mlflow.sklearn.log_model( # Log the trained model to MLflow
+                sk_model=model, 
+                artifact_path="model"
             )
+            
+            # Register the model in MLflow Model Registry
+            model_uri = logged_model_info.model_uri # Get model URI
+            registered_model = mlflow.register_model(model_uri, "Stock_Sentiment_Predictor") # Register model
+            
+            print(f"Model Registered: Name={registered_model.name}, Version={registered_model.version}")
             
             return "Model Trained, Logged, and Registered"
     
