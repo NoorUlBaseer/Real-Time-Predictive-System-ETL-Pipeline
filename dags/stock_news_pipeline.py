@@ -72,8 +72,8 @@ def stock_news_pipeline(): # Main DAG function
         #end_date = target_date.strftime('%Y-%m-%dT23:59:59Z') # End of day
 
         #hardcode dates
-        str_date = "2025-11-17T00:00:00Z"
-        end_date = "2025-11-17T23:59:59Z"
+        str_date = "2025-11-18T00:00:00Z"
+        end_date = "2025-11-18T23:59:59Z"
 
         url = ( # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -364,17 +364,28 @@ def stock_news_pipeline(): # Main DAG function
             mlflow.log_artifact(model_filename, artifact_path="model") # Log model file as MLflow artifact
             print(f"Model logged successfully as {model_filename}")
             
-            # Register the model in MLflow Model Registry
-            try: # Attempt model registration
-                model_uri = f"runs:/{run.info.run_id}/model/{model_filename}" # Model URI in MLflow artifact store
+            # Manual model registration in MLflow Model Registry
+            try: # Attempt to register the model
+                client = MlflowClient() # Initialize MLflow client
+                registered_name = "Stock_Sentiment_Predictor" # Registered model name
                 
-                registered_model_name = "Stock_Sentiment_Predictor" # Registered model name
+                try: # Try to create a new registered model
+                    client.create_registered_model(registered_name) # Create registered model
+                    print(f"Created new registered model: {registered_name}")
+                except Exception: # If it already exists, catch the exception
+                    print(f"Registered model {registered_name} already exists (Expected).")
+
+                source_uri = f"runs:/{run.info.run_id}/model/{model_filename}" # Source URI for the model version
                 
-                result = mlflow.register_model(model_uri, registered_model_name) # Register model
-                print(f"✅ Model Registered! Name: {result.name}, Version: {result.version}")
+                result = client.create_model_version( # Create a new model version
+                    name=registered_name,
+                    source=source_uri,
+                    run_id=run.info.run_id
+                )
+                print(f"✅ Successfully Registered Version {result.version}!")
                 
             except Exception as e: # Handle registration errors
-                print(f"⚠️ Model Registration Warning: {e}")
+                print(f"❌ Manual Registration Failed: {e}")
             
             return "Model Trained and Registered"
     
