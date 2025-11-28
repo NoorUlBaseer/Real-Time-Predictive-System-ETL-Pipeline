@@ -16,6 +16,12 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from ydata_profiling import ProfileReport
 from io import StringIO
 
+# Imports for model training
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
 DAG_ID = "stock_news_pipeline"
 RAW_DATA_PATH = "data/raw/daily_news.json" # Raw JSON data from API
 PROCESSED_DATA_PATH = "data/processed/daily_news.csv" # Cleaned + Merged CSV
@@ -46,7 +52,7 @@ DVC_ENV = { # DVC Environment Variables for BashOperator
     "AWS_REGION": "us-east-1",
 }
 
-@dag(
+@dag( # Define the DAG
     dag_id=DAG_ID,
     start_date=pendulum.datetime(2025, 11, 24, tz="UTC"),
     schedule="@daily", # Runs every day at midnight UTC
@@ -56,7 +62,7 @@ DVC_ENV = { # DVC Environment Variables for BashOperator
 def stock_news_pipeline(): # Main DAG function
     
     @task(retries=0) # No retries on failure
-    def extract_live_data(**kwargs) -> str:
+    def extract_live_data(**kwargs) -> str: # Extract data from GNews API and perform quality checks
         execution_date = kwargs.get('ds') # Get execution date in 'YYYY-MM-DD' format
 
         target_date = datetime.strptime(execution_date, '%Y-%m-%d') - timedelta(days=1) # Fetch previous day's date
@@ -113,7 +119,7 @@ def stock_news_pipeline(): # Main DAG function
         return json.dumps(payload) # Return payload as JSON string for next task
     
     @task
-    def pull_dvc_history() -> str:        
+    def pull_dvc_history() -> str: # Pull historical data from DVC
         tmp_dir = "/tmp/repo_pull" # Temporary directory for cloning repo
         if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
         
@@ -143,7 +149,7 @@ def stock_news_pipeline(): # Main DAG function
         return "{}" # Return empty JSON if no history
     
     @task
-    def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
+    def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str: # Transform data and generate profiling report
         #print history_json
         print(f"History: {history_json[:100]}...")  # Print first 100 characters of history JSON for debugging
 
@@ -243,7 +249,7 @@ def stock_news_pipeline(): # Main DAG function
         return df_combined.to_json(orient='split', date_format='iso') # Return merged data as JSON string
 
     @task
-    def dvc_add_and_push(merged_json: str) -> str:
+    def dvc_add_and_push(merged_json: str) -> str: # Version data with DVC
         df = pd.read_json(StringIO(merged_json), orient='split') # Load merged data from JSON string 
         
         os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True) # Ensure directory exists
@@ -267,7 +273,7 @@ def stock_news_pipeline(): # Main DAG function
         return dvc_content # Return DVC file content for Git commit
 
     @task
-    def git_commit_and_push(dvc_content: str, **kwargs):
+    def git_commit_and_push(dvc_content: str, **kwargs): # Commit and push changes to GitHub
         tmp_dir = "/tmp/repo_git" # Temporary directory for Git operations
         if os.path.exists(tmp_dir): shutil.rmtree(tmp_dir) # Clean up existing temp dir
         
@@ -294,13 +300,74 @@ def stock_news_pipeline(): # Main DAG function
         
         print("Git push successful.")
     
+    @task
+    def train_model(dvc_content: str): # Train and log model with MLflow
+        if not os.path.exists(PROCESSED_DATA_PATH): # Check if processed data exists
+            raise AirflowSkipException("No processed data found to train on.")
+            
+        df = pd.read_csv(PROCESSED_DATA_PATH) # Load processed data
+        
+        if len(df) < 5: # Ensure enough data to train (at least 5 rows)
+            print("Not enough data to train (need at least 5 rows). Skipping training.")
+            return "Skipped"
+
+        features = ['hour_of_day', 'day_of_week', 'title_sentiment', 'desc_sentiment', 'content_sentiment'] # Feature columns for training
+        X = df[features] # Feature matrix for training
+        
+        # Generate synthetic target variable (e.g., stock market change) for demonstration
+        np.random.seed(42) # For reproducibility
+        df['market_change'] = (df['title_sentiment'] + df['content_sentiment']) * 10 + np.random.normal(0, 2, len(df)) # Synthetic target variable
+        y = df['market_change'] # Target variable
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42) # Train-test split
+        
+        # Set up MLflow tracking
+        mlflow.set_tracking_uri(f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.mlflow") # Set MLflow tracking URI
+        os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_USER # Set MLflow username
+        os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN # Set MLflow token
+
+        mlflow.set_experiment("Stock_Price_Prediction") # Set MLflow experiment
+
+        # Train RandomForestRegressor model
+        with mlflow.start_run(run_name=f"Train_{kwargs.get('ds')}"):  # Start MLflow run
+            # Hyperparameters
+            n_estimators = 100 # Number of trees in the forest
+            max_depth = 10 # Maximum depth of the tree
+            
+            # Log hyperparameters
+            mlflow.log_param("n_estimators", n_estimators)
+            mlflow.log_param("max_depth", max_depth)
+
+            model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42) # Initialize model with hyperparameters
+            model.fit(X_train, y_train) # Train model on training data
+
+            # Evaluate model performance on test data
+            predictions = model.predict(X_test) # Make predictions on test data
+            rmse = np.sqrt(mean_squared_error(y_test, predictions)) # Calculate RMSE (Root Mean Squared Error)
+            mae = mean_absolute_error(y_test, predictions) # Calculate MAE (Mean Absolute Error)
+            r2 = r2_score(y_test, predictions) # Calculate R2 score (Coefficient of Determination)
+
+            # Log evaluation metrics
+            mlflow.log_metric("rmse", rmse)
+            mlflow.log_metric("mae", mae)
+            mlflow.log_metric("r2_score", r2)
+            
+            print(f"Training Complete. RMSE: {rmse}")
+            
+            mlflow.sklearn.log_model( # Log and register the model with MLflow
+                sk_model=model,
+                artifact_path="model",
+                registered_model_name="Stock_Sentiment_Predictor"
+            )
+            
+            return "Model Trained, Logged, and Registered"
+    
     raw_payload = extract_live_data() # Extract live data from GNews API
-    
     history_json = pull_dvc_history() # Pull historical data from DVC
-    
     merged_json = transform_and_profile(raw_payload, history_json) # Transform and profile data
     
     dvc_content = dvc_add_and_push(merged_json) # Version data with DVC
+    train_model(dvc_content) # Train and log model with MLflow
     
     git_commit_and_push(dvc_content) # Commit and push changes to GitHub
 

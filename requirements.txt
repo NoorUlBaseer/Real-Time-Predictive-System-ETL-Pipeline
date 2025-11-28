@@ -6,3 +6,4 @@ ydata-profiling
 textblob
 pendulum
 mlflow
+scikit-learn
