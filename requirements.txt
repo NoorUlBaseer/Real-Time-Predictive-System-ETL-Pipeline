@@ -7,3 +7,4 @@ textblob
 pendulum
 mlflow
 scikit-learn
+joblib

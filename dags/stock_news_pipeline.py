@@ -18,6 +18,7 @@ from io import StringIO
 
 # Imports for model training
 import numpy as np
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -354,9 +355,14 @@ def stock_news_pipeline(): # Main DAG function
             
             print(f"Training Complete. RMSE: {rmse}")
             
-            mlflow.sklearn.log_model(model, "model")
+            # Save and log the trained model using joblib
+            model_filename = "stock_sentiment_model.pkl" # Model filename 
             
-            print("Model logged successfully (Artifact only).")
+            joblib.dump(model, model_filename) # Save model to file
+            
+            mlflow.log_artifact(model_filename) # Log model file as MLflow artifact
+            
+            print(f"Model logged successfully as {model_filename}")
             
             return "Model Trained and Logged"
     
