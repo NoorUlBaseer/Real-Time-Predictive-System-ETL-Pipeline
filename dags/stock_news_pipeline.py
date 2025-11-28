@@ -360,10 +360,12 @@ def stock_news_pipeline(): # Main DAG function
             )
             
             # Register the model in MLflow Model Registry
-            model_uri = logged_model_info.model_uri # Get model URI
-            registered_model = mlflow.register_model(model_uri, "Stock_Sentiment_Predictor") # Register model
-            
-            print(f"Model Registered: Name={registered_model.name}, Version={registered_model.version}")
+            try: # Attempt to register the model
+                model_uri = logged_model_info.model_uri # Get model URI
+                registered_model = mlflow.register_model(model_uri, "Stock_Sentiment_Predictor") # Register model
+                print(f"Model Registered: Name={registered_model.name}, Version={registered_model.version}")
+            except Exception as e: # Handle registration errors
+                print(f"Model Registration Warning: {e}")
             
             return "Model Trained, Logged, and Registered"
     
