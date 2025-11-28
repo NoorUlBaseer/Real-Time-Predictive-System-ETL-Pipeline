@@ -301,7 +301,7 @@ def stock_news_pipeline(): # Main DAG function
         print("Git push successful.")
     
     @task
-    def train_model(dvc_content: str): # Train and log model with MLflow
+    def train_model(dvc_content: str, **kwargs): # Train and log model with MLflow
         if not os.path.exists(PROCESSED_DATA_PATH): # Check if processed data exists
             raise AirflowSkipException("No processed data found to train on.")
             
