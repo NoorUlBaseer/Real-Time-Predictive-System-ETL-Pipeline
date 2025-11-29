@@ -154,6 +154,9 @@ def stock_news_pipeline():  # Main DAG function
 
     @task  # Transform data and generate profiling report
     def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
         print(f"History: {history_json[:100]}...")  # Print first 100 characters of history JSON for debugging
 
         payload = json.loads(payload_json)  # Parse JSON string back to dict
@@ -308,6 +311,13 @@ def stock_news_pipeline():  # Main DAG function
 
     @task
     def train_model(dvc_content: str, **kwargs):  # Train and log model with MLflow
+        import os
+        import pandas as pd
+        import numpy as np
+        import mlflow
+        import joblib
+        from mlflow.tracking import MlflowClient
+
         if not os.path.exists(PROCESSED_DATA_PATH):  # Check if processed data exists
             raise AirflowSkipException("No processed data found to train on.")
 
