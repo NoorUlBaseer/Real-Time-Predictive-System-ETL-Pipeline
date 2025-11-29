@@ -68,3 +68,12 @@ jobs:
         run: |
           python scripts/compare_metrics.py
           cml comment create report.md
+
+      - name: Deploy to Astro
+        uses: astronomer/deploy-action@v0.4
+        with:
+          deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+          parse: true
+          wake-on-deploy: true 
+        env:
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
