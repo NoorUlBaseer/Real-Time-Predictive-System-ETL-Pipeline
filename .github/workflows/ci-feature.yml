@@ -42,7 +42,7 @@ jobs:
       # This checks for style issues but won't fail the build (exit-zero)
       - name: Run Flake8 (Style Warnings)
         run: |
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
 
       # 6. Run Unit Tests
       # We set Airflow env vars to prevent it from trying to load a DB or Examples
