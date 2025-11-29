@@ -26,47 +26,27 @@ jobs:
         run: |
           curl -sSL install.astronomer.io | sudo bash -s
 
-      # 3. WAKE UP and WAIT FOR HEALTH
+      # 3. WAKE UP & SLEEP (Fixed Duration)
+      # We wait 3 minutes (180s) based on the observation
       - name: Wake Up Astro Deployment
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
           DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
         run: |
           echo "🚀 Waking up deployment..."
-          # Send wake-up command (don't fail if already awake)
-          astro deployment wake-up $DEPLOYMENT_ID --force || true
-
-          echo "⏳ Waiting for deployment to become HEALTHY..."
-          MAX_RETRIES=60 # 10 minutes
-          COUNT=0
+          astro deployment wake-up $DEPLOYMENT_ID --force
           
-          while [ $COUNT -lt $MAX_RETRIES ]; do
-            # Fetch status using 'list' and grep for the ID and HEALTHY status
-            # We use 'astro deployment list' which returns a table
-            OUTPUT=$(astro deployment list)
-            
-            # Check if our specific Deployment ID line contains "HEALTHY"
-            if echo "$OUTPUT" | grep -q "$DEPLOYMENT_ID.*HEALTHY"; then
-              echo "✅ Deployment is ready!"
-              exit 0
-            fi
-            
-            echo "   Current Status: Waiting... ($COUNT/$MAX_RETRIES)"
-            sleep 10
-            COUNT=$((COUNT+1))
-          done
-          
-          echo "❌ Timeout waiting for deployment to wake up."
-          exit 1
+          echo "💤 Waiting 3 minutes for deployment to stabilize..."
+          sleep 180
 
       # 4. Deploy Code to Astronomer Cloud
-      # We disable wake-on-deploy so this action doesn't try to "cleanup" (hibernate) afterwards
+      # wake-on-deploy is FALSE so it doesn't try to manage hibernation (and accidentally sleep)
       - name: Deploy to Astro
         uses: astronomer/deploy-action@v0.11.0
         with:
           deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
-          parse: false   # Keep false if you have library import issues during parse
-          wake-on-deploy: false
+          parse: false   # Skipped to avoid import errors
+          wake-on-deploy: false # CRITICAL: Let the manual step handle waking up
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
 
@@ -76,7 +56,7 @@ jobs:
         with:
           python-version: '3.9'
 
-      # 6. Setup CML (Continuous Machine Learning)
+      # 6. Setup CML 
       - name: Setup CML
         uses: iterative/setup-cml@v1
 
@@ -85,7 +65,7 @@ jobs:
         run: pip install requests mlflow pandas
 
       # 8. Trigger Remote DAG & Wait for Completion
-      # Now the deployment is definitely awake, so this script won't hit a 503 error
+      # The deployment should be fully awake now
       - name: Trigger & Monitor DAG
         env:
           ASTRO_AIRFLOW_URL: ${{ secrets.ASTRO_AIRFLOW_URL }}
@@ -106,12 +86,13 @@ jobs:
           cml comment create report.md
 
       # 10. HIBERNATE DEPLOYMENT (Cleanup)
-      # This runs 'always()', even if the tests fail, so you don't waste money.
+      # This runs 'always()', even if tests fail, to save money
       - name: Hibernate Astro Deployment
         if: always()
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+          DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
         run: |
-          # Remove the override we created in Step 3, allowing the schedule to resume (or sleep)
-          astro deployment hibernate ${{ secrets.ASTRO_DEPLOYMENT_ID }} --remove-override --force
+          echo "😴 Putting deployment back to sleep..."
+          astro deployment hibernate $DEPLOYMENT_ID --remove-override --force
           echo "Deployment hibernation schedule resumed."
