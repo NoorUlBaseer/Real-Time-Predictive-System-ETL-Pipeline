@@ -26,17 +26,37 @@ jobs:
         run: |
           curl -sSL install.astronomer.io | sudo bash -s
 
-      # 3. WAKE UP DEPLOYMENT (Manual Override)
-      # We do this manually so it STAYS awake for the subsequent steps
+      # 3. WAKE UP & WAIT FOR HEALTH
       - name: Wake Up Astro Deployment
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+          DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
         run: |
-          # Wake up the deployment and force it to stay awake
-          astro deployment wake-up ${{ secrets.ASTRO_DEPLOYMENT_ID }} --force
+          # 1. Send Wake Up Command
+          echo "🚀 Waking up deployment..."
+          astro deployment wake-up $DEPLOYMENT_ID --force
+
+          # 2. Poll until Healthy (Max 10 minutes)
+          echo "⏳ Waiting for deployment to become HEALTHY..."
+          MAX_RETRIES=60
+          COUNT=0
           
-          # Wait 30 seconds to ensure API is responsive before deploying
-          sleep 30
+          while [ $COUNT -lt $MAX_RETRIES ]; do
+            # Get status JSON
+            STATUS=$(astro deployment inspect $DEPLOYMENT_ID --output json | jq -r '.status')
+            echo "   Current Status: $STATUS"
+            
+            if [ "$STATUS" == "HEALTHY" ]; then
+              echo "✅ Deployment is ready!"
+              exit 0
+            fi
+            
+            sleep 10
+            COUNT=$((COUNT+1))
+          done
+          
+          echo "❌ Timeout waiting for deployment to wake up."
+          exit 1
 
       # 4. Deploy Code to Astronomer Cloud
       # We disable wake-on-deploy so this action doesn't try to "cleanup" (hibernate) afterwards
