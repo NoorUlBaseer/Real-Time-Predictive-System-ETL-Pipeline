@@ -2,103 +2,103 @@ import os
 import time
 import requests
 import sys
+from datetime import datetime, timezone
 
 # Load environment variables
 RAW_URL = os.environ.get("ASTRO_AIRFLOW_URL", "")
 API_TOKEN = os.environ.get("ASTRO_API_TOKEN")
 DAG_ID = "stock_news_pipeline"
 
-def get_clean_url(url):  # Function to clean and standardize the Airflow URL
-    if not url:
-        return ""
-    
-    url = url.strip()
-    
-    # 1. Remove trailing slash (The cause of your 405 error)
-    if url.endswith("/"):
-        url = url[:-1]
-        
-    # 2. Remove '/home' if copied from browser address bar
-    if url.endswith("/home"):
-        url = url.replace("/home", "")
-        
+def get_clean_url(url):
+    """Cleans the URL to be API-ready."""
+    if not url: return ""
+    url = url.strip().rstrip("/")
+    # Remove common suffixes if present
+    for suffix in ["/home", "/api/v1", "/api/v2"]:
+        if url.endswith(suffix):
+            url = url[:-len(suffix)]
     return url
 
-# Clean the URL once at startup
 AIRFLOW_URL = get_clean_url(RAW_URL)
+HEADERS = {
+    "Authorization": f"Bearer {API_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 def trigger_dag_with_retry(max_retries=60, delay=10):
-    url = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns"
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    # Note: Using /api/v1 as standard. If your logs showed v2, change this to v2.
+    endpoint = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns"
 
-    print(f"🚀 Attempting to trigger DAG: {DAG_ID}")
-    print(f"🔗 Using Endpoint: {url}") # Debug print to confirm fix
+    print(f"\n🚀 Attempting Trigger: {endpoint}")
 
     for attempt in range(max_retries):
         try:
-            # We pass 'conf' to ensure we can parameterize the run if needed later
-            response = requests.post(url, headers=headers, json={"conf": {}})
+            # FIX: Explicitly provide logical_date (Required for Airflow 3 / Strict APIs)
+            current_date = datetime.now(timezone.utc).isoformat()
+            payload = {
+                "conf": {},
+                "logical_date": current_date
+            }
 
+            # Disable redirects to catch 3xx errors explicitly
+            response = requests.post(endpoint, headers=HEADERS, json=payload, allow_redirects=False)
+
+            # Success
             if response.status_code == 200:
                 run_id = response.json()["dag_run_id"]
-                print(f"✅ Success! DAG Triggered. Run ID: {run_id}")
+                print(f"✅ Success! Run ID: {run_id}")
                 return run_id
 
+            # Handle Redirects (The 405 Cause)
+            elif 300 <= response.status_code < 400:
+                print(f"⚠️ Redirect Detected ({response.status_code})!")
+                print(f"   Server wants to send us to: {response.headers.get('Location')}")
+                sys.exit(1)
+
+            # Handle Cold Start
             elif response.status_code in [502, 503, 504]:
-                print(f"⚠️ Deployment sleeping/updating (Status {response.status_code}). Retrying in {delay}s... ({attempt+1}/{max_retries})")
-            
-            # Specific catch for the 405 error to be helpful
-            elif response.status_code == 405:
-                print(f"❌ Error 405: Method Not Allowed. Your URL might still be malformed: {url}")
+                print(f"💤 Server sleeping/booting ({response.status_code}). Retry {attempt+1}/{max_retries}...")
+
+            # Handle Validation Errors (422)
+            elif response.status_code == 422:
+                print(f"❌ Error 422: Validation Failed.")
+                print(f"   Response: {response.text}")
                 sys.exit(1)
 
             else:
-                print(f"❌ API Error: {response.status_code} - {response.text}")
+                print(f"❌ Error {response.status_code}: {response.text}")
                 sys.exit(1)
 
-        except requests.exceptions.ConnectionError:
-            print(f"⚠️ Connection Refused (Webserver down). Retrying in {delay}s... ({attempt+1}/{max_retries})")
+        except Exception as e:
+            print(f"⚠️ Connection Error: {e}. Retrying...")
 
         time.sleep(delay)
 
-    print("❌ Failed to wake up Deployment after multiple attempts.")
+    print("❌ Timeout waiting for deployment.")
     sys.exit(1)
 
 def monitor_dag(run_id):
-    url = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns/{run_id}"
-    headers = {"Authorization": f"Bearer {API_TOKEN}"}
+    endpoint = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns/{run_id}"
+    print(f"\nTitle: Monitoring Run {run_id}...")
 
-    print("⏳ Monitoring DAG execution...")
-
-    start_time = time.time()
-    timeout = 1200  # 20 minutes
-
-    while (time.time() - start_time) < timeout:
+    start = time.time()
+    while (time.time() - start) < 1200: # 20 mins
         try:
-            response = requests.get(url, headers=headers)
-            
-            if response.status_code == 200:
-                state = response.json()["state"]
-                if state == "success":
-                    print("✅ DAG completed successfully!")
-                    return True
-                elif state == "failed":
+            r = requests.get(endpoint, headers=HEADERS)
+            if r.status_code == 200:
+                state = r.json()['state']
+                if state == 'success':
+                    print("✅ DAG Succeeded!")
+                    return
+                elif state == 'failed':
                     print("❌ DAG Failed!")
                     sys.exit(1)
                 print(f"   Status: {state}...")
-            else:
-                print(f"⚠️ Failed to check status: {response.status_code}")
-                
+            time.sleep(10)
+        except Exception:
             time.sleep(10)
 
-        except Exception as e:
-            print(f"⚠️ Monitor glitch: {e}. Retrying...")
-            time.sleep(10)
-
-    print("❌ Timeout: DAG took too long to finish.")
+    print("❌ Timeout.")
     sys.exit(1)
 
 if __name__ == "__main__":
