@@ -26,32 +26,32 @@ jobs:
         run: |
           curl -sSL install.astronomer.io | sudo bash -s
 
-      # 3. WAKE UP & WAIT FOR HEALTH
+      # 3. WAKE UP and WAIT FOR HEALTH
       - name: Wake Up Astro Deployment
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
           DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
         run: |
           echo "🚀 Waking up deployment..."
-          astro deployment wake-up $DEPLOYMENT_ID --force
+          # Send wake-up command (don't fail if already awake)
+          astro deployment wake-up $DEPLOYMENT_ID --force || true
 
           echo "⏳ Waiting for deployment to become HEALTHY..."
-          MAX_RETRIES=60
+          MAX_RETRIES=60 # 10 minutes
           COUNT=0
           
           while [ $COUNT -lt $MAX_RETRIES ]; do
-            # Fetch full JSON and use jq to find the status field safely
-            # We try multiple common paths: .status, .metadata.status, .healthStatus
-            JSON_OUTPUT=$(astro deployment inspect $DEPLOYMENT_ID --output json)
-            STATUS=$(echo $JSON_OUTPUT | jq -r '.status // .metadata.status // .healthStatus // "UNKNOWN"')
+            # Fetch status using 'list' and grep for the ID and HEALTHY status
+            # We use 'astro deployment list' which returns a table
+            OUTPUT=$(astro deployment list)
             
-            echo "   Current Status: $STATUS"
-            
-            if [ "$STATUS" == "HEALTHY" ]; then
+            # Check if our specific Deployment ID line contains "HEALTHY"
+            if echo "$OUTPUT" | grep -q "$DEPLOYMENT_ID.*HEALTHY"; then
               echo "✅ Deployment is ready!"
               exit 0
             fi
             
+            echo "   Current Status: Waiting... ($COUNT/$MAX_RETRIES)"
             sleep 10
             COUNT=$((COUNT+1))
           done
