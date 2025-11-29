@@ -42,7 +42,7 @@ jobs:
       # This checks for style issues but won't fail the build (exit-zero)
       - name: Run Flake8 (Style Warnings)
         run: |
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
 
         # 6. Initialize Airflow DB for Unit Tests
         # Airflow needs a database initialized to run certain tests
@@ -51,7 +51,7 @@ jobs:
           AIRFLOW_HOME: ${{ github.workspace }}/airflow
         run: |
           mkdir -p $AIRFLOW_HOME
-          airflow db init
+          airflow db migrate
 
       # 7. Run Unit Tests
       # Run the tests we created in tests/test_dag_extended.py
