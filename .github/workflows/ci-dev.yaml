@@ -42,8 +42,8 @@ jobs:
           COUNT=0
           
           while [ $COUNT -lt $MAX_RETRIES ]; do
-            # Get status JSON
-            STATUS=$(astro deployment inspect $DEPLOYMENT_ID --output json | jq -r '.status')
+            # Use the --key flag to get specifically the status value
+            STATUS=$(astro deployment inspect $DEPLOYMENT_ID --key status --clean-output)
             echo "   Current Status: $STATUS"
             
             if [ "$STATUS" == "HEALTHY" ]; then
