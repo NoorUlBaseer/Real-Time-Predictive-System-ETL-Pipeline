@@ -56,7 +56,7 @@ jobs:
         with:
           python-version: '3.9'
 
-      # 6. Setup CML (Continuous Machine Learning)
+      # 6. Setup CML 
       - name: Setup CML
         uses: iterative/setup-cml@v1
 
