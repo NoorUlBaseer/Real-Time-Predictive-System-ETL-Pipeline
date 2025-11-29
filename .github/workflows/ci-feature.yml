@@ -42,18 +42,27 @@ jobs:
       # This checks for style issues but won't fail the build (exit-zero)
       - name: Run Flake8 (Style Warnings)
         run: |
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-      # 6. Run Unit Tests
-      # We set Airflow env vars to prevent it from trying to load a DB or Examples
-      - name: Run DAG Integrity Tests
+        # 6. Initialize Airflow DB for Unit Tests
+        # Airflow needs a database initialized to run certain tests
+      - name: Initialize Airflow DB
         env:
-          AIRFLOW_CORE_LOAD_EXAMPLES: 'False'
-          AIRFLOW_CORE_UNIT_TEST_MODE: 'True'
           AIRFLOW_HOME: ${{ github.workspace }}/airflow
         run: |
-          # Add current directory to python path so it finds 'dags' module
+          mkdir -p $AIRFLOW_HOME
+          airflow db init
+
+      # 7. Run Unit Tests
+      # Run the tests we created in tests/test_dag_extended.py
+      - name: Run Unit Tests
+        env:
+          AIRFLOW_HOME: ${{ github.workspace }}/airflow
+          # Note the Double Underscores ()
+          AIRFLOW_CORE_LOAD_EXAMPLES: 'False'
+          AIRFLOW_CORE_UNIT_TEST_MODE: 'True'
+          # Explicitly point to the DB file we just created
+          AIRFLOW_DATABASE_SQL_ALCHEMY_CONN: sqlite:///${{ github.workspace }}/airflow/airflow.db
+        run: |
           export PYTHONPATH=$PYTHONPATH:.
-          
-          # Run the tests we created in tests/test_dag_extended.py
           pytest tests/
