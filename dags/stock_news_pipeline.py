@@ -4,7 +4,6 @@ import requests
 import pandas as pd
 import pendulum
 import subprocess
-import mlflow
 import shutil
 from datetime import datetime, timedelta
 from textblob import TextBlob
