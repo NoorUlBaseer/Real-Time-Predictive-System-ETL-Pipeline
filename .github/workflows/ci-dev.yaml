@@ -1,0 +1,70 @@
+name: CI - Dev to Test (Remote Trigger)
+
+# Trigger: Only on Pull Requests targeting the 'test' branch (Dev -> Test merge)
+on:
+  pull_request:
+    branches:
+      - test
+
+jobs:
+  deploy-and-test:
+    name: Deploy, Retrain, and Evaluate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # To write comments
+      pull-requests: write # To post CML reports
+      issues: write
+      statuses: write
+    
+    steps:
+      # 1. Checkout Code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 2. Deploy Code to Astronomer Cloud
+      # This ensures the Airflow DAG has the LATEST code from your Dev branch
+      - name: Deploy to Astro
+        uses: astronomer/deploy-action@v0.4
+        with:
+          deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+          parse: true
+        env:
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+
+      # 3. Setup Python for Scripts
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 4. Setup CML (Continuous Machine Learning)
+      # Required to post the report.md to the PR
+      - name: Setup CML
+        uses: iterative/setup-cml@v1
+
+      # 5. Install Dependencies for Scripts
+      - name: Install Dependencies
+        run: pip install requests mlflow pandas
+
+      # 6. Trigger Remote DAG & Wait for Completion
+      # This script waits for the Astro deployment to wake up, triggers the DAG, 
+      # and polls until it succeeds (or fails).
+      - name: Trigger & Monitor DAG
+        env:
+          ASTRO_AIRFLOW_URL: ${{ secrets.ASTRO_AIRFLOW_URL }}
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+        run: python scripts/trigger_and_monitor.py
+
+      # 7. Compare Metrics & Post Report (The Gatekeeper)
+      # Only runs if Step 6 (DAG) succeeded.
+      # Checks Dagshub for metrics, compares Candidate vs Baseline, 
+      # posts a report, and FAILS the pipeline if metrics degraded.
+      - name: Compare Metrics & Report
+        env:
+          DAGSHUB_USERNAME: "NoorUlBaseer" # Your Username
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          REPO_NAME: "Real-Time-Predictive-System" # Your Dagshub Repo Name
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Provided by GitHub automatically
+        run: |
+          python scripts/compare_metrics.py
+          cml comment create report.md
