@@ -28,7 +28,7 @@ def get_clean_url(url):  # Function to clean and standardize the Airflow URL
 AIRFLOW_URL = get_clean_url(RAW_URL)
 
 def trigger_dag_with_retry(max_retries=60, delay=10):
-    url = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns"
+    url = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns"
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
@@ -68,7 +68,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
     sys.exit(1)
 
 def monitor_dag(run_id):
-    url = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns/{run_id}"
+    url = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns/{run_id}"
     headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
     print("⏳ Monitoring DAG execution...")
