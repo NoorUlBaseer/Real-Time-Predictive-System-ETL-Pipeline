@@ -37,14 +37,12 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
             current_date = datetime.now(timezone.utc).isoformat()
             payload = {
                 "conf": {},
-                "logical_date": current_date
+                "execution_date": datetime.now(timezone.utc).isoformat()
             }
 
-            # Disable redirects to catch 3xx errors explicitly
             response = requests.post(endpoint, headers=HEADERS, json=payload, allow_redirects=False)
 
-            # Success
-            if response.status_code == 200:
+            if response.status_code == 201:
                 run_id = response.json()["dag_run_id"]
                 print(f"✅ Success! Run ID: {run_id}")
                 return run_id
