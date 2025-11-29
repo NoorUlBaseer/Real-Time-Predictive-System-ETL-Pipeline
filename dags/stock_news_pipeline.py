@@ -283,7 +283,7 @@ def stock_news_pipeline():  # Main DAG function
             shutil.rmtree(tmp_dir)
 
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"  # GitHub repo URL
-        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True)  # Clone repo
+        subprocess.run(["git", "clone", "-b", "dev", repo_url, tmp_dir], check=True)  # Clone repo
 
         dvc_file_path = os.path.join(tmp_dir, f"{PROCESSED_DATA_PATH}.dvc")  # Path to DVC file in cloned repo
         os.makedirs(os.path.dirname(dvc_file_path), exist_ok=True)  # Ensure directory exists
@@ -302,7 +302,7 @@ def stock_news_pipeline():  # Main DAG function
         # Commit changes with message
         subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False)
 
-        subprocess.run(["git", "push", "origin", "master"], cwd=cwd, check=True)  # Push changes to remote repository
+        subprocess.run(["git", "push", "origin", "HEAD:dev"], cwd=cwd, check=True)  # Push changes to remote repository
 
         print("Git push successful.")
 
