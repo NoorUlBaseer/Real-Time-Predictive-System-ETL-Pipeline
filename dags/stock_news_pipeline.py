@@ -13,14 +13,6 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from ydata_profiling import ProfileReport
 from io import StringIO
 
-# Imports for model training
-import numpy as np
-import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from mlflow.tracking import MlflowClient
-
 DAG_ID = "stock_news_pipeline"
 RAW_DATA_PATH = "data/raw/daily_news.json"  # Raw JSON data from API
 PROCESSED_DATA_PATH = "data/processed/daily_news.csv"  # Cleaned + Merged CSV
@@ -315,6 +307,9 @@ def stock_news_pipeline():  # Main DAG function
         import numpy as np
         import mlflow
         import joblib
+        from sklearn.model_selection import train_test_split
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         from mlflow.tracking import MlflowClient
 
         if not os.path.exists(PROCESSED_DATA_PATH):  # Check if processed data exists
