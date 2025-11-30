@@ -62,8 +62,8 @@ def stock_news_pipeline():  # Main DAG function
         # end_date = target_date.strftime('%Y-%m-%dT23:59:59Z')  # End of day
 
         # hardcode dates
-        str_date = "2025-11-9T00:00:00Z"
-        end_date = "2025-11-9T23:59:59Z"
+        str_date = "2025-11-08T00:00:00Z"
+        end_date = "2025-11-08T23:59:59Z"
 
         url = (  # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -293,8 +293,8 @@ def stock_news_pipeline():  # Main DAG function
 
         subprocess.run(["git", "add", "."], cwd=cwd, check=True)  # Stage all changes
 
-        # Commit changes with message
-        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False)
+        # Commit changes with message and skip CI
+        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')} [skip ci]"], cwd=cwd, check=False)
 
         subprocess.run(["git", "push", "origin", "HEAD:dev"], cwd=cwd, check=True)  # Push changes to remote repository
 
