@@ -40,6 +40,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
                 "execution_date": datetime.now(timezone.utc).isoformat()
             }
 
+            # Trigger the DAG
             response = requests.post(endpoint, headers=HEADERS, json=payload, allow_redirects=False)
 
             if response.status_code == 201:
