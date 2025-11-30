@@ -2,6 +2,7 @@ import mlflow
 from mlflow.tracking import MlflowClient
 import os
 import sys
+import subprocess
 
 # Configure MLflow to use DagsHub
 mlflow.set_tracking_uri(f"https://dagshub.com/{os.getenv('DAGSHUB_USERNAME')}/{os.getenv('REPO_NAME')}.mlflow")
@@ -73,10 +74,16 @@ def main():
     with open("report.md", "w") as f:  # Write the report to a markdown file
         f.write(report)
 
+    print("Posting CML Report.")
+    try:  # Post the report using CML
+        subprocess.run(["cml", "comment", "create", "report.md"], check=True)
+    except Exception as e:  # If CML fails, log but continue
+        print(f"⚠️ Failed to post CML report: {e}")
+
     if not is_better:  # If candidate is worse, exit without promotion
         print(f"⚠ Candidate RMSE ({candidate_rmse}) is worse than Baseline ({baseline_rmse}).")
         print("⛔ Skipping model promotion.")
-        sys.exit(0)  # Exit cleanly without running the promotion code below
+        sys.exit(1)  # Exit cleanly without running the promotion code below
 
     print(f"✅ Approved: Candidate beat {baseline_source}.")
 

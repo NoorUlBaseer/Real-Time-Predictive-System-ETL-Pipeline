@@ -81,9 +81,7 @@ jobs:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
           REPO_NAME: "Real-Time-Predictive-System"
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python scripts/compare_metrics.py
-          cml comment create report.md
+        run: python scripts/compare_metrics.py
 
       # 10. HIBERNATE DEPLOYMENT (Cleanup)
       # This runs 'always()', even if tests fail, to save money
