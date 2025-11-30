@@ -37,7 +37,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
             current_date = datetime.now(timezone.utc).isoformat()
             payload = {
                 "conf": {},
-                "execution_date": datetime.now(timezone.utc).isoformat()
+                "logical_date": datetime.now(timezone.utc).isoformat()
             }
 
             # Trigger the DAG
