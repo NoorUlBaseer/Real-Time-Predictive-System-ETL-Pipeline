@@ -47,7 +47,7 @@ DVC_ENV = {  # DVC Environment Variables for BashOperator
 @dag(  # Define the DAG
     dag_id=DAG_ID,
     start_date=pendulum.datetime(2025, 11, 24, tz="UTC"),
-    schedule="@daily",  # Runs every day at midnight UTC
+    schedule=None,  # Set to None for manual triggering
     catchup=False,  # No backfilling
     doc_md="DAG for fetching daily technology/stock-related news, profiling and versioning",
 )

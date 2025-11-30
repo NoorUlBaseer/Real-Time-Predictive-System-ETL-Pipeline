@@ -2,9 +2,14 @@ name: CI - Dev to Test (Remote Trigger)
 
 # Trigger: Only on Pull Requests targeting the 'test' branch (Dev -> Test merge)
 on:
-  pull_request:
+  pull_request:  # Trigger on PRs
     branches:
       - test
+
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+  workflow_dispatch:  # Manual trigger option
 
 jobs:
   deploy-and-test:
