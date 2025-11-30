@@ -9,21 +9,25 @@ RAW_URL = os.environ.get("ASTRO_AIRFLOW_URL", "")
 API_TOKEN = os.environ.get("ASTRO_API_TOKEN")
 DAG_ID = "stock_news_pipeline"
 
-def get_clean_url(url):
-    """Cleans the URL to be API-ready."""
-    if not url: return ""
+
+def get_clean_url(url):  # Clean and standardize the Airflow URL
+    if not url:
+        return ""
     url = url.strip().rstrip("/")
+
     # Remove common suffixes if present
     for suffix in ["/home", "/api/v1", "/api/v2"]:
         if url.endswith(suffix):
             url = url[:-len(suffix)]
     return url
 
+
 AIRFLOW_URL = get_clean_url(RAW_URL)
 HEADERS = {
     "Authorization": f"Bearer {API_TOKEN}",
     "Content-Type": "application/json"
 }
+
 
 def trigger_dag_with_retry(max_retries=60, delay=10):
     # Note: Using /api/v1 as standard. If your logs showed v2, change this to v2.
@@ -33,11 +37,9 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
 
     for attempt in range(max_retries):
         try:
-            # FIX: Explicitly provide logical_date (Required for Airflow 3 / Strict APIs)
-            current_date = datetime.now(timezone.utc).isoformat()
-            payload = {
+            payload = {  # Minimal payload to trigger a DAG run
                 "conf": {},
-                "logical_date": datetime.now(timezone.utc).isoformat()
+                "logical_date": datetime.now(timezone.utc).isoformat()  # Calculate current UTC time and assign as logical_date
             }
 
             # Trigger the DAG
@@ -50,7 +52,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
 
             # Handle Redirects (The 405 Cause)
             elif 300 <= response.status_code < 400:
-                print(f"⚠️ Redirect Detected ({response.status_code})!")
+                print(f"⚠ Redirect Detected ({response.status_code})!")
                 print(f"   Server wants to send us to: {response.headers.get('Location')}")
                 sys.exit(1)
 
@@ -69,19 +71,20 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
                 sys.exit(1)
 
         except Exception as e:
-            print(f"⚠️ Connection Error: {e}. Retrying...")
+            print(f"⚠ Connection Error: {e}. Retrying...")
 
         time.sleep(delay)
 
     print("❌ Timeout waiting for deployment.")
     sys.exit(1)
 
+
 def monitor_dag(run_id):
     endpoint = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns/{run_id}"
     print(f"\nTitle: Monitoring Run {run_id}...")
 
     start = time.time()
-    while (time.time() - start) < 1200: # 20 mins
+    while (time.time() - start) < 1200:  # 20 mins
         try:
             r = requests.get(endpoint, headers=HEADERS)
             if r.status_code == 200:
@@ -99,6 +102,7 @@ def monitor_dag(run_id):
 
     print("❌ Timeout.")
     sys.exit(1)
+
 
 if __name__ == "__main__":
     if not AIRFLOW_URL or not API_TOKEN:
