@@ -27,7 +27,7 @@ HEADERS = {
 
 def trigger_dag_with_retry(max_retries=60, delay=10):
     # Note: Using /api/v1 as standard. If your logs showed v2, change this to v2.
-    endpoint = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns"
+    endpoint = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns"
 
     print(f"\n🚀 Attempting Trigger: {endpoint}")
 
@@ -40,6 +40,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
                 "execution_date": datetime.now(timezone.utc).isoformat()
             }
 
+            # Trigger the DAG
             response = requests.post(endpoint, headers=HEADERS, json=payload, allow_redirects=False)
 
             if response.status_code == 201:
@@ -76,7 +77,7 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
     sys.exit(1)
 
 def monitor_dag(run_id):
-    endpoint = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns/{run_id}"
+    endpoint = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns/{run_id}"
     print(f"\nTitle: Monitoring Run {run_id}...")
 
     start = time.time()
