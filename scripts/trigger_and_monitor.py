@@ -42,8 +42,8 @@ def trigger_dag_with_retry(max_retries=60, delay=10):
 
             # Trigger the DAG
             response = requests.post(endpoint, headers=HEADERS, json=payload, allow_redirects=False)
-
-            if response.status_code == 201:
+            # added both 200 and 201 to success codes
+            if response.status_code in [200, 201]:
                 run_id = response.json()["dag_run_id"]
                 print(f"✅ Success! Run ID: {run_id}")
                 return run_id
