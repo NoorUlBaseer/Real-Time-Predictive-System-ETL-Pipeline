@@ -1,5 +1,5 @@
 outs:
-- md5: e7bbf44d3c9fb817f40b41bb7cdce6f6
-  size: 85338
+- md5: de98e35e4e0aea2bf98f62e22494ba15
+  size: 86549
   hash: md5
   path: daily_news.csv
