@@ -292,8 +292,8 @@ def stock_news_pipeline():  # Main DAG function
 
         subprocess.run(["git", "add", "."], cwd=cwd, check=True)  # Stage all changes
 
-        # Commit changes with message
-        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False)
+        # Commit changes with message and skip CI
+        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')} [skip ci]"], cwd=cwd, check=False)
 
         subprocess.run(["git", "push", "origin", "HEAD:dev"], cwd=cwd, check=True)  # Push changes to remote repository
 
