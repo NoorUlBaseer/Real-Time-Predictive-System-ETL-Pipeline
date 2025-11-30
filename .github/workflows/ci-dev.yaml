@@ -1,0 +1,98 @@
+name: CI - Dev to Test (Remote Trigger)
+
+# Trigger: Only on Pull Requests targeting the 'test' branch (Dev -> Test merge)
+on:
+  pull_request:
+    branches:
+      - test
+
+jobs:
+  deploy-and-test:
+    name: Deploy, Retrain, and Evaluate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # To write comments
+      pull-requests: write # To post CML reports
+      issues: write
+      statuses: write
+    
+    steps:
+      # 1. Checkout Code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 2. Install Astro CLI (Required for manual wake/sleep commands)
+      - name: Install Astro CLI
+        run: |
+          curl -sSL install.astronomer.io | sudo bash -s
+
+      # 3. WAKE UP & SLEEP (Fixed Duration)
+      # We wait 3 minutes (180s) based on the observation
+      - name: Wake Up Astro Deployment
+        env:
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+          DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+        run: |
+          echo "🚀 Waking up deployment..."
+          astro deployment wake-up $DEPLOYMENT_ID --force
+          
+          echo "💤 Waiting 3 minutes for deployment to stabilize..."
+          sleep 180
+
+      # 4. Deploy Code to Astronomer Cloud
+      # wake-on-deploy is FALSE so it doesn't try to manage hibernation (and accidentally sleep)
+      - name: Deploy to Astro
+        uses: astronomer/deploy-action@v0.11.0
+        with:
+          deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+          parse: false   # Skipped to avoid import errors
+          wake-on-deploy: false # CRITICAL: Let the manual step handle waking up
+        env:
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+
+      # 5. Setup Python for Scripts
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 6. Setup CML 
+      - name: Setup CML
+        uses: iterative/setup-cml@v1
+
+      # 7. Install Dependencies for Scripts
+      - name: Install Dependencies
+        run: pip install requests mlflow pandas
+
+      # 8. Trigger Remote DAG & Wait for Completion
+      # The deployment should be fully awake now
+      - name: Trigger & Monitor DAG
+        env:
+          ASTRO_AIRFLOW_URL: ${{ secrets.ASTRO_AIRFLOW_URL }}
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+          GIT_BRANCH: "dev"
+        run: python scripts/trigger_and_monitor.py
+
+      # 9. Compare Metrics & Post Report (The Gatekeeper)
+      # Only runs if Step 8 (DAG) succeeded.
+      - name: Compare Metrics & Report
+        env:
+          DAGSHUB_USERNAME: "Noor-Ul-Baseer"
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          REPO_NAME: "Real-Time-Predictive-System"
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/compare_metrics.py
+          cml comment create report.md
+
+      # 10. HIBERNATE DEPLOYMENT (Cleanup)
+      # This runs 'always()', even if tests fail, to save money
+      - name: Hibernate Astro Deployment
+        if: always()
+        env:
+          ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
+          DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+        run: |
+          echo "😴 Putting deployment back to sleep..."
+          astro deployment hibernate $DEPLOYMENT_ID --remove-override --force
+          echo "Deployment hibernation schedule resumed."

@@ -4,7 +4,6 @@ import requests
 import pandas as pd
 import pendulum
 import subprocess
-import mlflow
 import shutil
 from datetime import datetime, timedelta
 from textblob import TextBlob
@@ -13,14 +12,6 @@ from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from ydata_profiling import ProfileReport
 from io import StringIO
-
-# Imports for model training
-import numpy as np
-import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from mlflow.tracking import MlflowClient
 
 DAG_ID = "stock_news_pipeline"
 RAW_DATA_PATH = "data/raw/daily_news.json"  # Raw JSON data from API
@@ -71,8 +62,8 @@ def stock_news_pipeline():  # Main DAG function
         # end_date = target_date.strftime('%Y-%m-%dT23:59:59Z')  # End of day
 
         # hardcode dates
-        str_date = "2025-11-10T00:00:00Z"
-        end_date = "2025-11-10T23:59:59Z"
+        str_date = "2025-11-07T00:00:00Z"
+        end_date = "2025-11-07T23:59:59Z"
 
         url = (  # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -154,6 +145,8 @@ def stock_news_pipeline():  # Main DAG function
 
     @task  # Transform data and generate profiling report
     def transform_and_profile(payload_json: str, history_json: str, **kwargs) -> str:
+        import mlflow
+
         print(f"History: {history_json[:100]}...")  # Print first 100 characters of history JSON for debugging
 
         payload = json.loads(payload_json)  # Parse JSON string back to dict
@@ -283,7 +276,7 @@ def stock_news_pipeline():  # Main DAG function
             shutil.rmtree(tmp_dir)
 
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"  # GitHub repo URL
-        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True)  # Clone repo
+        subprocess.run(["git", "clone", "-b", "dev", repo_url, tmp_dir], check=True)  # Clone repo
 
         dvc_file_path = os.path.join(tmp_dir, f"{PROCESSED_DATA_PATH}.dvc")  # Path to DVC file in cloned repo
         os.makedirs(os.path.dirname(dvc_file_path), exist_ok=True)  # Ensure directory exists
@@ -299,15 +292,25 @@ def stock_news_pipeline():  # Main DAG function
 
         subprocess.run(["git", "add", "."], cwd=cwd, check=True)  # Stage all changes
 
-        # Commit changes with message
-        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False)
+        # Commit changes with message and skip CI
+        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')} [skip ci]"], cwd=cwd, check=False)
 
-        subprocess.run(["git", "push", "origin", "master"], cwd=cwd, check=True)  # Push changes to remote repository
+        subprocess.run(["git", "push", "origin", "HEAD:dev"], cwd=cwd, check=True)  # Push changes to remote repository
 
         print("Git push successful.")
 
     @task
     def train_model(dvc_content: str, **kwargs):  # Train and log model with MLflow
+        import os
+        import pandas as pd
+        import numpy as np
+        import mlflow
+        import joblib
+        from sklearn.model_selection import train_test_split
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+        from mlflow.tracking import MlflowClient
+
         if not os.path.exists(PROCESSED_DATA_PATH):  # Check if processed data exists
             raise AirflowSkipException("No processed data found to train on.")
 
