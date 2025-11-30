@@ -118,7 +118,7 @@ def stock_news_pipeline():  # Main DAG function
             shutil.rmtree(tmp_dir)  # Clean up existing temp dir
 
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"  # GitHub repo URL
-        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True)  # Clone repo
+        subprocess.run(["git", "clone", "-b", "dev", repo_url, tmp_dir], check=True)  # Clone repo
 
         commands = (
             "dvc remote add -d -f origin s3://dvc && "  # Add DVC remote storage
