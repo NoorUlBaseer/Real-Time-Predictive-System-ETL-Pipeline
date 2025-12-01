@@ -41,14 +41,18 @@ jobs:
       # 4. Build Docker Image
       - name: Build Docker Image
         run: |
-          # Create a dynamic tag using the GitHub Run Number
-          IMAGE_TAG="v1.0.${{ github.run_number }}"
+          # Save the tag to GITHUB_ENV so other steps can see it
+          echo "IMAGE_TAG=v1.0.${{ github.run_number }}" >> $GITHUB_ENV
           
-          echo "Building image with tag: $IMAGE_TAG"
-
-          # Build from the 'inference' folder with the dynamic tag
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$IMAGE_TAG ./inference
-          docker tag ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$IMAGE_TAG ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latest
+          # We can't use the env var in the same block immediately without refreshing, 
+          # so we define it locally for this block too.
+          TAG="v1.0.${{ github.run_number }}"
+          
+          echo "Building image with tag: $TAG"
+          
+          # Build
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$TAG ./inference
+          docker tag ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$TAG ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latests
 
       # 5. Deployment Verification (Health Check) (Phase 5.5 Step 4)
       - name: Verify Container Health
