@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
 import pandas as pd
-import os
 
 app = FastAPI(title="Stock Sentiment Predictor")  # API instance
 
@@ -15,6 +14,7 @@ except Exception as e:  # Handle exceptions during model loading
     print(f"❌ Failed to load model: {e}")
     model = None
 
+
 class NewsInput(BaseModel):  # Define input schema for news data
     hour_of_day: int
     day_of_week: int
@@ -22,11 +22,13 @@ class NewsInput(BaseModel):  # Define input schema for news data
     desc_sentiment: float
     content_sentiment: float
 
+
 @app.get("/")
 def health_check():  # Health check endpoint
     if model:  # Model loaded successfully
         return {"status": "healthy", "model_loaded": True}
     return {"status": "unhealthy", "error": "Model not loaded"}  # Model not loaded
+
 
 @app.post("/predict")
 def predict(news: NewsInput):  # Prediction endpoint

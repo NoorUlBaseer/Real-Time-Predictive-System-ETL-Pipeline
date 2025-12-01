@@ -15,6 +15,7 @@ mlflow.set_tracking_uri(f"https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.mlflow"
 os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_USER
 os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN
 
+
 def main():
     client = MlflowClient()  # Initialize MLflow client
 
@@ -36,6 +37,7 @@ def main():
     except Exception as e:  # Handle exceptions during model fetching
         print(f"❌ Failed to fetch champion model: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
