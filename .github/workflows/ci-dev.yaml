@@ -22,6 +22,27 @@ jobs:
       statuses: write
     
     steps:
+      # 1. Checkout Code with History (fetch-depth: 0) to read commit messages
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # 2. Check Commit Message (The Loop Breaker)
+      - name: Check Commit Message
+        id: check_commit
+        run: |
+          msg=$(git log -1 --pretty=%B)
+          echo "Commit message: $msg"
+          
+          if [[ "$msg" == *"ETL Update"* ]]; then
+            echo "🤖 Bot commit detected. Skipping heavy tasks."
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "👤 Human commit detected. Running tests."
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
       # 1. Checkout Code
       - name: Checkout Code
         uses: actions/checkout@v3
