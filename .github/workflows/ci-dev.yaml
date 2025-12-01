@@ -16,19 +16,19 @@ jobs:
     name: Deploy, Retrain, and Evaluate
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # To write comments
-      pull-requests: write # To post CML reports
+      contents: write  # To write comments
+      pull-requests: write  # To post CML reports
       issues: write
       statuses: write
     
     steps:
-      # 1. Checkout Code with History (fetch-depth: 0) to read commit messages
+      # 1. Checkout Code with full history for commit message check
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. Check Commit Message (The Loop Breaker)
+      # 2. CI Logic: Determine if commit is from bot or human
       - name: Check Commit Message
         id: check_commit
         run: |
@@ -43,16 +43,12 @@ jobs:
             echo "should_run=true" >> $GITHUB_OUTPUT
           fi
 
-      # 1. Checkout Code
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      # 2. Install Astro CLI (Required for manual wake/sleep commands)
+      # 3. Install Astro CLI (Required for manual wake/sleep commands)
       - name: Install Astro CLI
         run: |
           curl -sSL install.astronomer.io | sudo bash -s
 
-      # 3. WAKE UP & SLEEP (Fixed Duration)
+      # 4. WAKE UP & SLEEP (Fixed Duration)
       # We wait 3 minutes (180s) based on the observation
       - name: Wake Up Astro Deployment
         env:
@@ -65,7 +61,7 @@ jobs:
           echo "💤 Waiting 3 minutes for deployment to stabilize..."
           sleep 180
 
-      # 4. Deploy Code to Astronomer Cloud
+      # 5. Deploy Code to Astronomer Cloud
       # wake-on-deploy is FALSE so it doesn't try to manage hibernation (and accidentally sleep)
       - name: Deploy to Astro
         uses: astronomer/deploy-action@v0.11.0
@@ -76,21 +72,21 @@ jobs:
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
 
-      # 5. Setup Python for Scripts
+      # 6. Setup Python for Scripts
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      # 6. Setup CML 
+      # 7. Setup CML 
       - name: Setup CML
         uses: iterative/setup-cml@v1
 
-      # 7. Install Dependencies for Scripts
+      # 8. Install Dependencies for Scripts
       - name: Install Dependencies
         run: pip install requests mlflow pandas
 
-      # 8. Trigger Remote DAG & Wait for Completion
+      # 9. Trigger Remote DAG & Wait for Completion
       # The deployment should be fully awake now
       - name: Trigger & Monitor DAG
         env:
@@ -99,8 +95,8 @@ jobs:
           GIT_BRANCH: "dev"
         run: python scripts/trigger_and_monitor.py
 
-      # 9. Compare Metrics & Post Report (The Gatekeeper)
-      # Only runs if Step 8 (DAG) succeeded.
+      # 10. Compare Metrics & Post Report (The Gatekeeper)
+      # Only runs if Step 9 (DAG) succeeded.
       - name: Compare Metrics & Report
         env:
           DAGSHUB_USERNAME: "Noor-Ul-Baseer"
@@ -109,7 +105,7 @@ jobs:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/compare_metrics.py
 
-      # 10. HIBERNATE DEPLOYMENT (Cleanup)
+      # 11. HIBERNATE DEPLOYMENT (Cleanup)
       # This runs 'always()', even if tests fail, to save money
       - name: Hibernate Astro Deployment
         if: always()
