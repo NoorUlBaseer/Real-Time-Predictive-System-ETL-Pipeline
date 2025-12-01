@@ -61,7 +61,7 @@ def stock_news_pipeline():  # Main DAG function
         # str_date = target_date.strftime('%Y-%m-%dT00:00:00Z')  # Start of day
         # end_date = target_date.strftime('%Y-%m-%dT23:59:59Z')  # End of day
 
-        # hardcode dates
+        # hardcode-dates
         str_date = "2025-11-05T00:00:00Z"
         end_date = "2025-11-05T23:59:59Z"
 
