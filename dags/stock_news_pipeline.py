@@ -62,8 +62,8 @@ def stock_news_pipeline():  # Main DAG function
         # end_date = target_date.strftime('%Y-%m-%dT23:59:59Z')  # End of day
 
         # hardcode-dates
-        str_date = "2025-11-05T00:00:00Z"
-        end_date = "2025-11-05T23:59:59Z"
+        str_date = "2025-11-04T00:00:00Z"
+        end_date = "2025-11-04T23:59:59Z"
 
         url = (  # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
