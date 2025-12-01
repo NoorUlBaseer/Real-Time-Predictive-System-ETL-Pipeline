@@ -6,29 +6,61 @@ on:
     branches:
       - test
 
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+  workflow_dispatch:  # Manual trigger option
+
 jobs:
   deploy-and-test:
     name: Deploy, Retrain, and Evaluate
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # To write comments
-      pull-requests: write # To post CML reports
+      contents: write  # To write comments
+      pull-requests: write  # To post CML reports
       issues: write
       statuses: write
-    
+      actions: read  # To check status of previous workflow runs (Bot Path)
+
     steps:
-      # 1. Checkout Code
+      # 1. Checkout Code with full history for commit message check
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      # 2. Install Astro CLI (Required for manual wake/sleep commands)
+      # 2. CI Logic: Determine if commit is from bot or human
+      - name: Check Commit Message
+        id: check_commit
+        run: |
+          # Get the SHA of the actual commit on the branch
+          # If triggered by PR, use head.sha. If schedule/dispatch, use GITHUB_SHA.
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+          if [[ -z "$HEAD_SHA" ]]; then HEAD_SHA=$GITHUB_SHA; fi
+          
+          # Read the message of THAT specific commit
+          msg=$(git log -1 --pretty=%B $HEAD_SHA)
+          echo "Real Commit message: $msg"
+          
+          if [[ "$msg" == *"ETL Update"* ]]; then
+            echo "🤖 Bot commit detected. Skipping heavy tests."
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "👤 Human commit detected. Running tests."
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
+      # HUMAN PATH START
+
+      # 3. Install Astro CLI
       - name: Install Astro CLI
+        if: steps.check_commit.outputs.should_run == 'true'
         run: |
           curl -sSL install.astronomer.io | sudo bash -s
 
-      # 3. WAKE UP & SLEEP (Fixed Duration)
-      # We wait 3 minutes (180s) based on the observation
+      # 4. WAKE UP & SLEEP (Fixed Duration)
       - name: Wake Up Astro Deployment
+        if: steps.check_commit.outputs.should_run == 'true'
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
           DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
@@ -39,56 +71,57 @@ jobs:
           echo "💤 Waiting 3 minutes for deployment to stabilize..."
           sleep 180
 
-      # 4. Deploy Code to Astronomer Cloud
-      # wake-on-deploy is FALSE so it doesn't try to manage hibernation (and accidentally sleep)
+      # 5. Deploy Code to Astronomer Cloud
       - name: Deploy to Astro
+        if: steps.check_commit.outputs.should_run == 'true'
         uses: astronomer/deploy-action@v0.11.0
         with:
           deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
           parse: false   # Skipped to avoid import errors
-          wake-on-deploy: false # CRITICAL: Let the manual step handle waking up
+          wake-on-deploy: false # Manual wake-up handles this
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
 
-      # 5. Setup Python for Scripts
+      # 6. Setup Python
       - name: Setup Python
+        if: steps.check_commit.outputs.should_run == 'true'
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      # 6. Setup CML 
+      # 7. Setup CML 
       - name: Setup CML
+        if: steps.check_commit.outputs.should_run == 'true'
         uses: iterative/setup-cml@v1
 
-      # 7. Install Dependencies for Scripts
+      # 8. Install Dependencies
       - name: Install Dependencies
+        if: steps.check_commit.outputs.should_run == 'true'
         run: pip install requests mlflow pandas
 
-      # 8. Trigger Remote DAG & Wait for Completion
-      # The deployment should be fully awake now
+      # 9. Trigger Remote DAG & Wait
       - name: Trigger & Monitor DAG
+        if: steps.check_commit.outputs.should_run == 'true'
         env:
           ASTRO_AIRFLOW_URL: ${{ secrets.ASTRO_AIRFLOW_URL }}
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
           GIT_BRANCH: "dev"
         run: python scripts/trigger_and_monitor.py
 
-      # 9. Compare Metrics & Post Report (The Gatekeeper)
-      # Only runs if Step 8 (DAG) succeeded.
+      # 10. Compare Metrics & Post Report
       - name: Compare Metrics & Report
+        if: steps.check_commit.outputs.should_run == 'true'
         env:
           DAGSHUB_USERNAME: "Noor-Ul-Baseer"
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
           REPO_NAME: "Real-Time-Predictive-System"
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python scripts/compare_metrics.py
-          cml comment create report.md
+        run: python scripts/compare_metrics.py
 
-      # 10. HIBERNATE DEPLOYMENT (Cleanup)
-      # This runs 'always()', even if tests fail, to save money
+      # 11. HIBERNATE DEPLOYMENT (Cleanup)
+      # Runs ONLY if Human path ran, and ALWAYS runs even if tests failed
       - name: Hibernate Astro Deployment
-        if: always()
+        if: always() && steps.check_commit.outputs.should_run == 'true'
         env:
           ASTRO_API_TOKEN: ${{ secrets.ASTRO_API_TOKEN }}
           DEPLOYMENT_ID: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
@@ -96,3 +129,33 @@ jobs:
           echo "😴 Putting deployment back to sleep..."
           astro deployment hibernate $DEPLOYMENT_ID --remove-override --force
           echo "Deployment hibernation schedule resumed."
+
+      # BOT PATH START
+
+      # 12. Verify Parent Commit Status
+      # If this is a bot commit, ensure the previous human commit actually PASSED
+      - name: Verify Parent Commit Status
+        if: steps.check_commit.outputs.should_run == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Get Parent Commit SHA
+          PARENT_SHA=$(git rev-parse HEAD^1)
+          echo "🔍 Checking status of Parent Commit: $PARENT_SHA"
+          
+          # 2. Fetch status of the latest run for that commit
+          STATUS=$(gh run list --commit $PARENT_SHA --workflow "CI - Dev to Test (Remote Trigger)" --json conclusion --jq '.[0].conclusion')
+          
+          echo "Parent Commit Status: $STATUS"
+          
+          # 3. Decide
+          if [[ "$STATUS" == "success" ]]; then
+            echo "✅ Parent commit passed tests. This data update is valid."
+            exit 0
+          elif [[ "$STATUS" == "skipped" || "$STATUS" == "" ]]; then
+             echo "⚠️ Parent status unclear ($STATUS). Proceeding with caution."
+             exit 0
+          else
+            echo "❌ Parent commit FAILED or Cancelled. Blocking this merge."
+            exit 1
+          fi

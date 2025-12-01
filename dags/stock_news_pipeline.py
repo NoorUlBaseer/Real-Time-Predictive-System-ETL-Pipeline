@@ -47,7 +47,7 @@ DVC_ENV = {  # DVC Environment Variables for BashOperator
 @dag(  # Define the DAG
     dag_id=DAG_ID,
     start_date=pendulum.datetime(2025, 11, 24, tz="UTC"),
-    schedule="@daily",  # Runs every day at midnight UTC
+    schedule=None,  # Set to None for manual triggering
     catchup=False,  # No backfilling
     doc_md="DAG for fetching daily technology/stock-related news, profiling and versioning",
 )
@@ -61,9 +61,9 @@ def stock_news_pipeline():  # Main DAG function
         # str_date = target_date.strftime('%Y-%m-%dT00:00:00Z')  # Start of day
         # end_date = target_date.strftime('%Y-%m-%dT23:59:59Z')  # End of day
 
-        # hardcode dates
-        str_date = "2025-11-07T00:00:00Z"
-        end_date = "2025-11-07T23:59:59Z"
+        # hardcode-dates
+        str_date = "2025-11-04T00:00:00Z"
+        end_date = "2025-11-04T23:59:59Z"
 
         url = (  # GNews API endpoint for technology news
             f"https://gnews.io/api/v4/search?q=technology&from={str_date}&to={end_date}"
@@ -118,7 +118,7 @@ def stock_news_pipeline():  # Main DAG function
             shutil.rmtree(tmp_dir)  # Clean up existing temp dir
 
         repo_url = f"https://{GITHUB_USER}:{GITHUB_TOKEN}@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"  # GitHub repo URL
-        subprocess.run(["git", "clone", repo_url, tmp_dir], check=True)  # Clone repo
+        subprocess.run(["git", "clone", "-b", "dev", repo_url, tmp_dir], check=True)  # Clone repo
 
         commands = (
             "dvc remote add -d -f origin s3://dvc && "  # Add DVC remote storage
@@ -292,8 +292,8 @@ def stock_news_pipeline():  # Main DAG function
 
         subprocess.run(["git", "add", "."], cwd=cwd, check=True)  # Stage all changes
 
-        # Commit changes with message and skip CI
-        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')} [skip ci]"], cwd=cwd, check=False)
+        # Commit changes with message
+        subprocess.run(["git", "commit", "-m", f"ETL Update: {kwargs.get('ds')}"], cwd=cwd, check=False)
 
         subprocess.run(["git", "push", "origin", "HEAD:dev"], cwd=cwd, check=True)  # Push changes to remote repository
 
