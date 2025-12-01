@@ -1,0 +1,68 @@
+name: CD - Production Deployment
+
+# Trigger: Merge (Push) to Master
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 1. Setup Python to Fetch Model
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Fetch Dependencies
+        run: pip install mlflow dagshub
+
+      # 2. Fetch Best Model (Phase 5.5 Step 1)
+      - name: Fetch Champion Model
+        env:
+          DAGSHUB_USERNAME: "Noor-Ul-Baseer"
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          REPO_NAME: "Real-Time-Predictive-System"
+        run: python scripts/fetch_champion_model.py
+
+      # 3. Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 4. Build Docker Image
+      - name: Build Docker Image
+        run: |
+          # Build from the 'inference' folder context
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/stock-predictor:v1.0.0 ./inference
+          docker tag ${{ secrets.DOCKER_USERNAME }}/stock-predictor:v1.0.0 ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latest
+
+      # 5. Deployment Verification (Health Check) (Phase 5.5 Step 4)
+      - name: Verify Container Health
+        run: |
+          # Run container in detached mode
+          docker run -d -p 8000:8000 --name test_container ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latest
+          
+          # Wait for boot
+          sleep 10
+          
+          # Check Health Endpoint
+          echo "Testing Health Endpoint..."
+          curl -f http://localhost:8000/ || exit 1
+          
+          # Cleanup
+          docker stop test_container
+
+      # 6. Push to Docker Hub (Phase 5.5 Step 3)
+      - name: Push Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/stock-predictor:v1.0.0
+          docker push ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latest
