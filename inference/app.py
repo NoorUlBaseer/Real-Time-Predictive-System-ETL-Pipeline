@@ -16,6 +16,7 @@ DRIFTED_PREDICTIONS = Counter("drifted_predictions", "Number of requests flagged
 DRIFT_RATIO = Gauge("data_drift_ratio", "Ratio of OOD requests to total requests")  # Gauge for the ratio (Drift / Total)
 
 MODEL_PATH = "model_dir/stock_sentiment_model.pkl"  # Path to the trained model
+
 try:
     model = joblib.load(MODEL_PATH)  # Load the trained model
     print("✅ Model loaded successfully.")
