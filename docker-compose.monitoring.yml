@@ -1,15 +1,11 @@
 version: '3.8'
 
 services:
-  # 1. Your Prediction API
+  # 1. Your Prediction API (Pulled from Docker Hub)
   stock-api:
-    build: 
-      context: .
-      dockerfile: inference/Dockerfile
+    image: noorulbaseer/stock-predictor:latest
     ports:
       - "8000:8000"
-    volumes:
-      - ./inference/model_dir:/app/model_dir  # Mount local model for testing
     networks:
       - monitoring-net
 
