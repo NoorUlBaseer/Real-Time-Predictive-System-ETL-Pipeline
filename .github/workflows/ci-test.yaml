@@ -56,7 +56,7 @@ jobs:
           
           # Build
           docker build -t ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$TAG ./inference
-          docker tag ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$TAG ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latests
+          docker tag ${{ secrets.DOCKER_USERNAME }}/stock-predictor:$TAG ${{ secrets.DOCKER_USERNAME }}/stock-predictor:latest
 
       # 5. Deployment Verification (Health Check) (Phase 5.5 Step 4)
       - name: Verify Container Health
