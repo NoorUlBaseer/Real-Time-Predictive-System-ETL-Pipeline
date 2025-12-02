@@ -3,7 +3,7 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Install necessary Python packages
-RUN pip install --no-cache-dir scikit-learn pandas fastapi uvicorn joblib
+RUN pip install --no-cache-dir scikit-learn pandas fastapi uvicorn joblib prometheus-fastapi-instrumentator
 
 # Copy application code and model directory
 COPY app.py .

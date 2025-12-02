@@ -12,3 +12,7 @@ airflow.db
 data/raw/
 data/reports/
 iterative/
+# Grafana data (persistent volumes)
+monitoring/grafana-data/
+# Prometheus data (persistent volumes)
+monitoring/prometheus-data/
