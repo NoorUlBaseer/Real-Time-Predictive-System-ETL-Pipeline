@@ -21,15 +21,33 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          cache: 'pip' # Caches dependencies to speed up future runs
 
-      # 3. Install Dependencies
-      # We need Airflow installed so the 'import airflow' statements in tests don't fail
+      # 3. Install Dependencies (Optimized with uv)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: false
+
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8 pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Install google-re2 binary first to avoid build errors
+          uv pip install --system google-re2==1.1.20240702
+
+          # Install Testing Tools
+          uv pip install --system flake8 pytest
+
+          # Install Project Dependencies (Fast)
+          uv pip install --system \
+            apache-airflow-providers-http==4.10.0 \
+            dvc[s3]==3.48.0 \
+            requests==2.32.0 \
+            pandas==2.2.0 \
+            ydata-profiling==4.6.3 \
+            textblob==0.18.0.post0 \
+            pendulum==3.1.0 \
+            mlflow==2.14.1 \
+            scikit-learn==1.5.0 \
+            joblib==1.4.0
 
       # 4. Linting (Static Code Analysis)
       # Stops the build if there are syntax errors or undefined names
