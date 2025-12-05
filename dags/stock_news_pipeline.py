@@ -253,6 +253,7 @@ def stock_news_pipeline():  # Main DAG function
         df.to_csv(PROCESSED_DATA_PATH, index=False)  # Save merged data to CSV file
 
         commands = (
+            "rm -rf .dvc .dvcignore && "  # Clean existing DVC config
             "dvc init --no-scm && "  # Initialize DVC without Git
             "dvc remote add -d origin s3://dvc && "  # Add DVC remote storage
             f"dvc remote modify origin endpointurl https://dagshub.com/{DAGSHUB_USER}/{REPO_NAME}.s3 && "  # Set endpoint URL
